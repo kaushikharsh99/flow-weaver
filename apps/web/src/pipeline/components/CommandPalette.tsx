@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Trash2, Sun, Moon, Grid3x3, Plus, Search } from "lucide-react";
+import { Play, Trash2, Sun, Moon, Grid3x3, Plus, Search, LayoutGrid } from "lucide-react";
 import { NODE_TYPES } from "../nodeTypes";
 import { useStore } from "../store";
 import { runPipeline } from "../runner";
 import { cn } from "@/lib/utils";
+import { api } from "@/api";
+import type { Template } from "@/api/types";
+import { toast } from "sonner";
 
 interface Action { id: string; label: string; hint?: string; icon: any; run: () => void; }
 
@@ -23,9 +26,20 @@ export function CommandPalette() {
 
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (open) { setQ(""); setIdx(0); setTimeout(() => inputRef.current?.focus(), 20); } }, [open]);
+  useEffect(() => {
+    if (open) {
+      setQ("");
+      setIdx(0);
+      setTimeout(() => inputRef.current?.focus(), 20);
+      // Fetch dynamic templates seeded from backend
+      api.listTemplates()
+        .then(res => setTemplates(res.data || []))
+        .catch(err => console.error("Failed to load templates:", err));
+    }
+  }, [open]);
 
   const actions: Action[] = useMemo(() => [
     { id: "run", label: "Run pipeline", icon: Play, run: () => { setOpen(false); runPipeline(); } },
@@ -48,15 +62,58 @@ export function CommandPalette() {
     return list.slice(0, 8);
   }, [q, recents]);
 
+  const filteredTemplates = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return templates;
+    return templates.filter(t => t.name.toLowerCase().includes(query) || t.description.toLowerCase().includes(query));
+  }, [q, templates]);
+
   const filteredActions = useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return actions;
     return actions.filter(a => a.label.toLowerCase().includes(query));
   }, [q, actions]);
 
-  type Item = { kind: "node"; id: string; label: string; run: () => void; icon: any; hint?: string } | { kind: "action"; id: string; label: string; run: () => void; icon: any; hint?: string };
+  type Item = 
+    | { kind: "node"; id: string; label: string; run: () => void; icon: any; hint?: string } 
+    | { kind: "template"; id: string; label: string; run: () => void; icon: any; hint?: string } 
+    | { kind: "action"; id: string; label: string; run: () => void; icon: any; hint?: string };
+
   const flat: Item[] = [
     ...nodeItems.map(n => ({ kind: "node" as const, id: n.id, label: n.label, icon: n.icon, hint: n.category, run: () => { addNode(n.id, { x: 400 + Math.random()*80, y: 260 + Math.random()*80 }); pushRecent(n.id); setOpen(false); } })),
+    ...filteredTemplates.map(t => ({ 
+      kind: "template" as const, 
+      id: t.id, 
+      label: t.name, 
+      icon: LayoutGrid, 
+      hint: "Template", 
+      run: () => {
+        if (t.pipelineData && confirm(`Apply template "${t.name}"? Current canvas nodes in this tab will be replaced.`)) {
+          const store = useStore.getState();
+          store.pushHistory();
+          const nodes = t.pipelineData.nodes.map((n: any) => ({
+            id: n.id,
+            type: n.type || 'pipelineNode',
+            position: n.position,
+            data: {
+              ...n.data,
+              runtime: { status: 'idle' }
+            }
+          }));
+          const edges = t.pipelineData.edges.map((e: any) => ({
+            ...e,
+            type: 'smoothstep'
+          }));
+          useStore.setState({
+            tabs: store.tabs.map(tab => tab.id === store.activeTabId ? { ...tab, name: t.name, nodes, edges } : tab),
+            pipelineId: null, // Clear to force new pipeline creation on run
+            selectedIds: []
+          });
+          toast.success(`Template "${t.name}" applied successfully.`);
+          setOpen(false);
+        }
+      }
+    })),
     ...filteredActions.map(a => ({ kind: "action" as const, id: a.id, label: a.label, icon: a.icon, run: a.run })),
   ];
 
@@ -107,7 +164,11 @@ export function CommandPalette() {
                   <div key={item.kind + item.id}>
                     {showHeader && (
                       <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-white/40">
-                        {item.kind === "node" ? (q ? "Add Node" : "Recent & Nodes") : "Actions"}
+                        {item.kind === "node" 
+                          ? (q ? "Add Node" : "Recent & Nodes") 
+                          : item.kind === "template" 
+                            ? "Pipeline Templates" 
+                            : "Actions"}
                       </div>
                     )}
                     <button

@@ -65,7 +65,7 @@ export function Toolbar() {
         <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-accent-primary to-accent-primary/40 flex items-center justify-center">
           <Zap size={14} className="text-white" />
         </div>
-        <span className="text-[13px] font-semibold text-white/90 tracking-tight">Flowline</span>
+        <span className="text-[13px] font-semibold text-white/90 tracking-tight">FlowWeaver</span>
       </div>
 
       <div className="h-5 w-px bg-white/10 mx-1" />

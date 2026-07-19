@@ -4,10 +4,10 @@ import { PipelineBuilder } from "@/pipeline/components/PipelineBuilder";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Flowline — Visual Pipeline Builder" },
-      { name: "description", content: "A visual, node-based builder for designing data pipelines. Drag, connect, and simulate runs on an infinite canvas." },
-      { property: "og:title", content: "Flowline — Visual Pipeline Builder" },
-      { property: "og:description", content: "A visual, node-based builder for designing data pipelines." },
+      { title: "FlowWeaver — Visual Preprocessing Platform" },
+      { name: "description", content: "A visual, node-based builder for preprocessing and cleaning AI datasets. Drag, connect, and compile pipelines on an infinite canvas." },
+      { property: "og:title", content: "FlowWeaver — Visual Preprocessing Platform" },
+      { property: "og:description", content: "A visual, node-based builder for preprocessing and cleaning AI datasets." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
