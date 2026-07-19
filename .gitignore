@@ -38,3 +38,4 @@ __pycache__/
 venv/
 .env
 flow_weaver.db
+*.egg-info/
