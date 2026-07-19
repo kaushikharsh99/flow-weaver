@@ -64,6 +64,18 @@ class NodeRegistry:
                     valid_values = {opt["value"] for opt in param.options}
                     if str(val) not in valid_values:
                         errors.append(f"Parameter '{param.key}' value '{val}' is not a valid option.")
+            elif param.type == "regex" and val:
+                import re
+                try:
+                    re.compile(str(val))
+                except re.error as re_err:
+                    errors.append(f"Parameter '{param.key}' contains invalid regex: {re_err}")
+            elif param.type == "json" and val:
+                import json
+                try:
+                    json.loads(str(val))
+                except json.JSONDecodeError as json_err:
+                    errors.append(f"Parameter '{param.key}' contains invalid JSON: {json_err}")
 
         return len(errors) == 0, errors
 

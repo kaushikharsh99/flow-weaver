@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from .artifact import Artifact
 
 class Logger:
@@ -37,6 +37,10 @@ class ExecutionContext:
         self.logger = Logger()
         self.metrics = Metrics()
         self.artifacts: List[Artifact] = []
+        
+        # Callback hooks for status & runtime coordination
+        self._progress_callback: Optional[Callable[[int, Optional[str]], None]] = None
+        self._cancel_check: Optional[Callable[[], bool]] = None
 
     def log(self, message: str):
         self.logger.info(message)
@@ -49,3 +53,17 @@ class ExecutionContext:
 
     def add_artifact(self, artifact: Artifact):
         self.artifacts.append(artifact)
+
+    def report_progress(self, percent: int, message: Optional[str] = None):
+        """Report internal task execution progress percentage (0-100) and an optional status message."""
+        percent_capped = max(0, min(100, int(percent)))
+        if message:
+            self.log(message)
+        if self._progress_callback:
+            self._progress_callback(percent_capped, message)
+
+    def is_cancelled(self) -> bool:
+        """Check if execution has been cancelled by user in the visual workspace."""
+        if self._cancel_check:
+            return self._cancel_check()
+        return False

@@ -29,6 +29,42 @@ def get_memory_use() -> int:
     except Exception:
         return 0
 
+def format_execution_error(err: Exception, node_label: str, inputs: Dict[str, Any]) -> str:
+    """Format execution exceptions into friendly, actionable descriptions for researchers."""
+    problem = str(err)
+    suggestion = "Verify that parameters and connections are correct."
+    available_cols_msg = ""
+    
+    if isinstance(err, KeyError):
+        key_name = str(err).strip("'")
+        problem = f"Column '{key_name}' not found in the input dataset."
+        suggestion = "Update the parameter in the Inspector to select one of the available columns."
+        # Gather available columns from input datasets
+        cols = []
+        for port_id, dataset in inputs.items():
+            if hasattr(dataset, "columns") and callable(dataset.columns):
+                cols.extend(dataset.columns())
+        if cols:
+            available_cols_msg = "\nAvailable columns:\n" + "\n".join(f"- {col}" for col in sorted(list(set(cols))))
+            
+    elif isinstance(err, FileNotFoundError):
+        problem = f"File not found: {str(err)}"
+        suggestion = "Verify the file path exists and is accessible. Ensure relative paths are correct."
+        
+    elif "re.error" in str(type(err)) or "invalid regex" in str(err).lower():
+        problem = f"Invalid regular expression compilation failed: {str(err)}"
+        suggestion = "Check regex syntax syntax (e.g. escaping, braces, wildcards)."
+
+    formatted = f"""Node: {node_label}
+
+Problem:
+{problem}
+{available_cols_msg}
+
+Suggestion:
+{suggestion}"""
+    return formatted
+
 def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) -> None:
     """Sequential execution of a compiled pipeline execution plan supporting debugger breakpoints."""
     db = db_session
@@ -209,6 +245,22 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                         
                     ctx = ExecutionContext(variables, params)
                     
+                    # Sync progress and cancellation callbacks (Phase 3 progress/cancellation hooks)
+                    def progress_hook(pct, msg=None):
+                        loop.run_until_complete(send_ws({
+                            "type": "NODE_UPDATE",
+                            "nodeId": node_id,
+                            "status": "running",
+                            "nodeProgress": pct,
+                            "message": msg or f"Progress: {pct}%"
+                        }))
+                    ctx._progress_callback = progress_hook
+                    
+                    def cancel_hook():
+                        db.refresh(execution)
+                        return execution.status == "cancelled"
+                    ctx._cancel_check = cancel_hook
+                    
                     try:
                         start_time = time.perf_counter()
                         start_mem = get_memory_use()
@@ -230,6 +282,7 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                             
                         rows_per_sec = round((row_count / (duration_ms / 1000.0)), 2) if duration_ms > 0 else 0.0
                         
+                        # Ship intermediate user context logs
                         for log_entry in ctx.logger.logs:
                             loop.run_until_complete(send_ws({
                                 "type": "LOG",
@@ -238,38 +291,72 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                                 "message": log_entry
                             }))
                             
+                        # Pretty stage throughput logs (Phase 3 Log system)
+                        input_rows = sum(v.row_count() for v in inputs.values() if isinstance(v, Dataset) and v.row_count() is not None)
+                        output_rows = out_val.row_count() if (isinstance(out_val, Dataset) and out_val.row_count() is not None) else None
+                        
+                        if isinstance(out_val, Dataset) and output_rows is not None:
+                            is_filter_or_dedup = "filter" in category.lower() or "dedup" in category.lower() or "filter" in type_id.lower() or "dedup" in type_id.lower()
+                            if is_filter_or_dedup and input_rows > 0:
+                                diff = input_rows - output_rows
+                                stage_msg = f"Deduplicated/Filtered: Removed {diff:,} rows ({output_rows:,} rows remaining)"
+                            else:
+                                stage_msg = f"Processed: ✓ {output_rows:,} row(s) completed"
+                        else:
+                            stage_msg = "✓ Node completed successfully."
+                            
+                        loop.run_until_complete(send_ws({
+                            "type": "LOG",
+                            "level": "info",
+                            "nodeId": node_id,
+                            "message": stage_msg
+                        }))
+                            
                     except Exception as node_err:
+                        # Friendly Actionable Error Formatters (Phase 3 Error system)
+                        formatted_err = format_execution_error(node_err, title, inputs)
                         loop.run_until_complete(send_ws({
                             "type": "LOG",
                             "level": "error",
                             "nodeId": node_id,
-                            "message": f"Execution failed on node '{title}': {str(node_err)}"
+                            "message": formatted_err
                         }))
                         loop.run_until_complete(send_ws({
                             "type": "NODE_UPDATE",
                             "nodeId": node_id,
                             "status": "error"
                         }))
-                        raise node_err
+                        raise ValueError(formatted_err)
                 
                 # Cache output data results
                 outputs_store[node_id] = outputs
                 tasks_completed += 1
-
-                # Generate dynamic edge data preview
+ 
+                # Generate dynamic edge data preview with schemas (Phase 3 Preview system)
                 out_val = outputs.get("out")
                 preview = None
                 if isinstance(out_val, Dataset):
+                    sample_rows = out_val.to_list()[:5]
+                    inferred_schema = {}
+                    if sample_rows:
+                        for col in out_val.columns():
+                            val = sample_rows[0].get(col)
+                            inferred_schema[col] = type(val).__name__ if val is not None else "unknown"
+                    else:
+                        for col in out_val.columns():
+                            inferred_schema[col] = "unknown"
+                            
                     preview = {
                         "kind": "tabular",
                         "columns": out_val.columns(),
-                        "rows": out_val.to_list()[:5],
+                        "rows": sample_rows,
                         "stats": {
                             "rowCount": out_val.row_count(),
-                            "columnCount": len(out_val.columns())
+                            "columnCount": len(out_val.columns()),
+                            "schema": inferred_schema
                         }
                     }
-
+ 
                 # Emit NODE_UPDATE with full profile metrics!
                 loop.run_until_complete(send_ws({
                     "type": "NODE_UPDATE",
