@@ -1,0 +1,7 @@
+id: text_utils
+name: Text Utils
+version: 0.1.0
+author: Developer
+description: A custom data processing plugin for FlowWeaver.
+nodes:
+  - text_utils.nodes.CustomProcessingNode

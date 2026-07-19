@@ -1,0 +1,2 @@
+[console_scripts]
+flowweaver = flowweaver.sdk.cli:main

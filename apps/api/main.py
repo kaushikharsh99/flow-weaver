@@ -8,6 +8,10 @@ from app.db import engine, Base
 # Create database tables (SQLite in dev)
 Base.metadata.create_all(bind=engine)
 
+from app.engine.registry import registry
+# Dynamically scan and load local developer plugins
+registry.load_local_plugins("plugins")
+
 app = FastAPI(
     title="FlowWeaver API",
     description="Backend API for FlowWeaver Visual Pipeline Builder",
