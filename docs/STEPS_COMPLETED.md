@@ -86,3 +86,15 @@ This document records the exact milestones, phases, and files implemented during
   - `clean.py`: Clean compiler pycaches, pytest targets, and build outputs.
 - Rewrote root `run.py` to forward directly to `scripts/run.py`.
 - Configured gitignores to safely untrack and ignore setuptools egg-info folders.
+
+### Node Developer Experience (NDX Milestone)
+- Redesigned the SDK Node base class with a `NodeMeta` metaclass for auto-introspection of port and parameter descriptors.
+- Added `@node` decorator for zero-boilerplate node definitions that auto-infer id, label, category color, and description.
+- Added `Input`/`Output` port descriptor factories (`Input.text()`, `Output.tabular()`, etc.).
+- Added `Param` descriptor factory with 13 rich parameter types: text, textarea, number, slider, boolean, select, color, file, regex, column, secret, json, expression.
+- Added `preview()` and `validate()` lifecycle methods to the Node base class.
+- Converted the registry from manual `registry.register()` calls to auto-discovery scanning of the `nodes/` directory.
+- Converted all 22 FallbackNode stub entries into proper self-describing `@node` classes in `stubs.py`.
+- Expanded the frontend `ParamField` type union and `Inspector.tsx` `Field` component to auto-render all 13 parameter types from backend metadata.
+- Expanded the CLI with `create-node`, `test-node`, `lint-node`, and `package-plugin` commands.
+- All 26 nodes auto-discovered with zero manual registration. Full backward compatibility preserved.

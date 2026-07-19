@@ -151,3 +151,28 @@ FlowWeaver implements full debugger breakpoint pauses and resource execution pro
   - Memory: queries resident memory set sizes (RSS) maxrss utilizing Linux `resource` headers to calculate peak RAM allocation bytes.
   - Throughput: calculates rows processed per second dynamically from dataset row counts.
   - Preview payloads and metrics are emitted inside the `NODE_UPDATE` WebSocket frames to be mapped by the React client.
+
+---
+
+## 9. Declarative Node SDK
+
+FlowWeaver nodes are fully self-describing. The SDK provides:
+
+- **@node decorator** (`node.py`): Configures a Node class with metadata. Auto-infers id from class name (CamelCase → snake_case), label, category color, and description from docstring.
+- **Input/Output descriptors**: `Input.tabular()`, `Input.text()`, `Output.any()`, etc. — declared as class attributes, auto-collected by the NodeMeta metaclass into ports.
+- **Param descriptors**: 13 rich parameter types that auto-generate frontend UI: `text`, `textarea`, `number`, `slider`, `boolean`, `select`, `color`, `file`, `regex`, `column`, `secret`, `json`, `expression`.
+- **Lifecycle methods**: `execute()` (required), `preview()` (optional lightweight UI preview), `validate()` (optional parameter validation).
+- **NodeMeta metaclass**: Introspects class attributes at import time to build ports and parameter schemas. Zero boilerplate.
+- **Auto-discovery** (`registry.py`): On boot, the registry scans `app/engine/nodes/` for all Node subclasses and registers them automatically. Zero manual `registry.register()` calls.
+- **Backward compatible**: Old-style nodes with manual `inputs=[]`, `outputs=[]`, `params_schema=[]` still work.
+
+---
+
+## 10. Developer CLI
+
+The CLI (`packages/flowweaver_sdk/flowweaver/sdk/cli.py`) provides:
+- `flowweaver create-plugin <name>` — Scaffolds a full plugin package.
+- `flowweaver create-node <name> --category <cat>` — Scaffolds a single node with tests/examples using the declarative SDK.
+- `flowweaver test-node <path>` — Runs a node against its example fixtures.
+- `flowweaver lint-node <path>` — Validates node metadata completeness.
+- `flowweaver package-plugin <path>` — Builds a distributable tar.gz archive with manifest.
