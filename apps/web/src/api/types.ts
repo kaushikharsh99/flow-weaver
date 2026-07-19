@@ -95,7 +95,7 @@ export interface UpdatePipelineRequest {
 }
 
 // --- Executions ---
-export type ExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ExecutionStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 export interface Execution {
   id: string;

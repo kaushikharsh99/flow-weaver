@@ -216,7 +216,25 @@ export function createMockClient(): ApiClient {
       
       execution.status = 'cancelled';
       executions.set(id, execution);
-      return { data: { id, status: 'cancelled' } };
+      return { data: { id, status: 'cancelled' as const } };
+    },
+
+    async resumeExecution(id: string) {
+      await delay();
+      const execution = executions.get(id);
+      if (!execution) throw new Error(`Execution not found: ${id}`);
+      execution.status = 'running';
+      executions.set(id, execution);
+      return { data: { id, status: 'running' as const } };
+    },
+
+    async pauseExecution(id: string) {
+      await delay();
+      const execution = executions.get(id);
+      if (!execution) throw new Error(`Execution not found: ${id}`);
+      execution.status = 'paused';
+      executions.set(id, execution);
+      return { data: { id, status: 'paused' as const } };
     },
 
     async listNodeTypes() {

@@ -39,6 +39,8 @@ export interface ApiClient {
   getExecution(id: string): Promise<ApiResponse<Execution>>;
   getExecutionLogs(id: string): Promise<ApiListResponse<ExecutionLogEntry>>;
   cancelExecution(id: string): Promise<ApiResponse<{ id: string; status: 'cancelled' }>>;
+  resumeExecution(id: string): Promise<ApiResponse<{ id: string; status: 'running' }>>;
+  pauseExecution(id: string): Promise<ApiResponse<{ id: string; status: 'paused' }>>;
 
   // Nodes
   listNodeTypes(): Promise<ApiListResponse<NodeTypeInfo>>;

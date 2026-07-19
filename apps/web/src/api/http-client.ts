@@ -57,6 +57,8 @@ export function createHttpClient(baseUrl: string): ApiClient {
     getExecution: (id: string) => fetchJson(`/executions/${id}`),
     getExecutionLogs: (id: string) => fetchJson(`/executions/${id}/logs`),
     cancelExecution: (id: string) => fetchJson(`/executions/${id}`, { method: 'DELETE' }),
+    resumeExecution: (id: string) => fetchJson(`/executions/${id}/resume`, { method: 'POST' }),
+    pauseExecution: (id: string) => fetchJson(`/executions/${id}/pause`, { method: 'POST' }),
 
     // Nodes
     listNodeTypes: () => fetchJson('/nodes'),

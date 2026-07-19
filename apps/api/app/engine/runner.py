@@ -1,6 +1,8 @@
 import time
 import datetime
 import asyncio
+import threading
+import resource
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from app import models
@@ -15,8 +17,20 @@ from app.engine.compiler.optimizer import optimize_tasks
 from app.engine.compiler.planner import generate_plan
 from app.engine.registry import registry
 
+# Thread synchronization events for debugger pauses
+# Maps execution_id -> threading.Event
+resume_events: Dict[str, threading.Event] = {}
+
+def get_memory_use() -> int:
+    """Returns resident set size (RSS) memory in bytes on Linux."""
+    try:
+        # ru_maxrss is in KiB on Linux
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    except Exception:
+        return 0
+
 def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) -> None:
-    """Sequential execution of a compiled pipeline execution plan."""
+    """Sequential execution of a compiled pipeline execution plan supporting debugger breakpoints."""
     db = db_session
     execution = db.query(models.Execution).filter(models.Execution.id == execution_id).first()
     if not execution:
@@ -40,14 +54,16 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
     execution.status = "running"
     db.commit()
     
+    # Initialize thread event for resume triggers
+    resume_event = threading.Event()
+    resume_events[execution_id] = resume_event
+    
     loop = asyncio.new_event_loop()
     loop.run_until_complete(send_ws({
         "type": "EXECUTION_STARTED",
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     }))
     
-    # Gathers execution outputs mapping: node_id -> { port_id -> value }
-    # Now, values inside port dictionary are Dataset wrappers!
     outputs_store: Dict[str, Dict[str, Any]] = {}
     
     try:
@@ -99,6 +115,7 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
             for task in stage:
                 node_id = task.id
                 
+                # Check for user cancellation
                 db.refresh(execution)
                 if execution.status == "cancelled":
                     loop.run_until_complete(send_ws({
@@ -117,18 +134,51 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                 if orig_node:
                     title = orig_node.get("data", {}).get("title", type_id)
 
+                # --- Pipeline Debugger Breakpoint Logic ---
+                is_breakpoint = params.get("__breakpoint__") is True
+                if is_breakpoint or execution.status == "paused":
+                    execution.status = "paused"
+                    db.commit()
+                    
+                    loop.run_until_complete(send_ws({
+                        "type": "NODE_UPDATE",
+                        "nodeId": node_id,
+                        "status": "paused",
+                        "progress": int((tasks_completed / total_tasks) * 100),
+                        "message": f"Pipeline execution paused at breakpoint on node '{title}'."
+                    }))
+                    loop.run_until_complete(send_ws({
+                        "type": "LOG",
+                        "level": "warn",
+                        "nodeId": node_id,
+                        "message": f"Breakpoint hit on '{title}'. Waiting for debugger resume signal..."
+                    }))
+                    
+                    # Lock and wait for resume event
+                    resume_event.clear()
+                    resume_event.wait()
+                    
+                    # Recheck cancellation or restart state after wake
+                    db.refresh(execution)
+                    if execution.status == "cancelled":
+                        return
+                    
+                    # Set execution back to running
+                    execution.status = "running"
+                    db.commit()
+                    
+                    loop.run_until_complete(send_ws({
+                        "type": "LOG",
+                        "level": "info",
+                        "nodeId": node_id,
+                        "message": f"Debugger signal received. Resuming execution from '{title}'."
+                    }))
+
                 loop.run_until_complete(send_ws({
                     "type": "NODE_UPDATE",
                     "nodeId": node_id,
                     "status": "running",
                     "progress": int((tasks_completed / total_tasks) * 100)
-                }))
-
-                loop.run_until_complete(send_ws({
-                    "type": "LOG",
-                    "level": "info",
-                    "nodeId": node_id,
-                    "message": f"Running task '{title}' [{type_id}]"
                 }))
 
                 # Gather inputs from upstream outputs
@@ -147,9 +197,11 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                         "nodeId": node_id,
                         "message": "Reusing cached checkpoint output for node."
                     }))
-                    # Default mock caching
                     from flowweaver.sdk import TabularDataset
                     outputs = {"out": TabularDataset([{"cached": True}], columns=["cached"])}
+                    duration_ms = 0
+                    mem_allocated = 0
+                    rows_per_sec = 0.0
                 else:
                     executor = registry.get(type_id)
                     if not executor:
@@ -159,10 +211,25 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                     
                     try:
                         start_time = time.perf_counter()
+                        start_mem = get_memory_use()
+                        
                         outputs = executor.execute(inputs, ctx)
+                        
+                        end_mem = get_memory_use()
                         end_time = time.perf_counter()
                         
-                        # Emit logged metrics and trace logs
+                        # Calculate performance profiles
+                        duration_ms = int((end_time - start_time) * 1000)
+                        mem_allocated = max(0, end_mem - start_mem)
+                        
+                        # Calculate rows throughput
+                        row_count = 0
+                        out_val = outputs.get("out")
+                        if isinstance(out_val, Dataset):
+                            row_count = out_val.row_count() or 0
+                            
+                        rows_per_sec = round((row_count / (duration_ms / 1000.0)), 2) if duration_ms > 0 else 0.0
+                        
                         for log_entry in ctx.logger.logs:
                             loop.run_until_complete(send_ws({
                                 "type": "LOG",
@@ -189,29 +256,35 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                 outputs_store[node_id] = outputs
                 tasks_completed += 1
 
-                # Generate dynamic edge/node data preview from dataset abstraction!
+                # Generate dynamic edge data preview
                 out_val = outputs.get("out")
                 preview = None
                 if isinstance(out_val, Dataset):
                     preview = {
                         "kind": "tabular",
                         "columns": out_val.columns(),
-                        "rows": out_val.to_list()[:5], # Send top 5 rows sample to frontend
+                        "rows": out_val.to_list()[:5],
                         "stats": {
                             "rowCount": out_val.row_count(),
                             "columnCount": len(out_val.columns())
                         }
                     }
 
+                # Emit NODE_UPDATE with full profile metrics!
                 loop.run_until_complete(send_ws({
                     "type": "NODE_UPDATE",
                     "nodeId": node_id,
                     "status": "success",
                     "progress": int((tasks_completed / total_tasks) * 100),
-                    "preview": preview
+                    "preview": preview,
+                    "metrics": {
+                        "durationMs": duration_ms,
+                        "memoryBytes": mem_allocated,
+                        "rowsPerSec": rows_per_sec
+                    }
                 }))
 
-        # Completed all stages successfully
+        # Completed successfully
         execution.status = "completed"
         execution.progress = 100
         execution.completed_at = datetime.datetime.utcnow()
@@ -233,4 +306,5 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
             "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
         }))
     finally:
+        resume_events.pop(execution_id, None)
         loop.close()

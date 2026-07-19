@@ -101,6 +101,35 @@ def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"data": {"id": execution.id, "status": execution.status}}
 
+@router.post("/executions/{execution_id}/resume", response_model=Dict[str, Dict[str, Any]])
+def resume_execution(execution_id: str, db: Session = Depends(get_db)):
+    """Resume a paused pipeline execution from a debugger breakpoint."""
+    execution = db.query(models.Execution).filter(models.Execution.id == execution_id).first()
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+        
+    execution.status = "running"
+    db.commit()
+    
+    # Trigger thread synchronization Event to wake up runner.py
+    from app.engine.runner import resume_events
+    if execution_id in resume_events:
+        resume_events[execution_id].set()
+        
+    return {"data": {"id": execution.id, "status": "running"}}
+
+@router.post("/executions/{execution_id}/pause", response_model=Dict[str, Dict[str, Any]])
+def pause_execution(execution_id: str, db: Session = Depends(get_db)):
+    """Pause a running pipeline execution."""
+    execution = db.query(models.Execution).filter(models.Execution.id == execution_id).first()
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+        
+    execution.status = "paused"
+    db.commit()
+    
+    return {"data": {"id": execution.id, "status": "paused"}}
+
 @router.websocket("/executions/{execution_id}/stream")
 async def websocket_stream(websocket: WebSocket, execution_id: str):
     await manager.connect(execution_id, websocket)
