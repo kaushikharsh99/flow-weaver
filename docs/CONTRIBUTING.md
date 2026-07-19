@@ -1,6 +1,18 @@
 # FlowWeaver Contributor & Node Style Guide
 
-Nodes are adapters. Business logic belongs in reusable modules. A node should describe *what* FlowWeaver exposes; the implementation should live in a capability package that can be reused by multiple nodes.
+**Core Philosophy:** 
+> **Nodes are adapters. Business logic belongs in reusable modules. A node should describe *what* FlowWeaver exposes; the implementation should live in a capability package that can be reused by multiple nodes.**
+
+---
+
+## Team Rules & Code Ownership
+
+1. **Core framework changes require review.** Framework components (SDK, compiler, scheduler, database, API layer) are frozen and require approval from the lead maintainer before modifications.
+2. **Nodes cannot modify the SDK.** Custom nodes and plugins must only import public SDK components. Do not change files inside `packages/flowweaver_sdk/`.
+3. **Nodes contain adapters only; algorithms live in reusable modules.** Do not put core computational algorithms inside `node.py`. The node class is merely a wrapper exposing schema, ports, and configuration parameters to FlowWeaver.
+4. **Every node must work with the `Dataset` abstraction.** Never return or pass raw pandas/polars DataFrames or lists directly between nodes. Wrap them in structured `TabularDataset`, `PolarsDataset`, `ArrowDataset`, or `StreamingDataset`.
+5. **No direct filesystem or external access inside nodes.** Never use standard modules like `os.path`, `requests`, `urllib`, `threading`, or standard `logging` directly inside `node.py`. Route all I/O and telemetry actions through `ExecutionContext` to ensure node security and environment portability.
+6. **No duplicate business logic across nodes.** Share common helpers and algorithms under a shared `core/` package inside your capability directory or import from utility libraries.
 
 ---
 
@@ -8,8 +20,21 @@ Nodes are adapters. Business logic belongs in reusable modules. A node should de
 
 1. **Separation of Concerns**: A node class (`node.py`) is merely an interface layer. It translates FlowWeaver's input/output ports and parameter descriptors into variables passed into pure computational functions residing in the `core/` package.
 2. **The 200-Line Limit**: `node.py` files must remain small and readably clean. If `node.py` grows beyond 200 lines, extract code into the `core/` algorithm modules.
-3. **No Direct Side Effects**: Nodes must never import or call OS paths (`os.path`), HTTP clients (`requests`, `urllib`), threads (`threading`), databases (`sqlite3`), or standard Python logger outputs (`logging`, `print()`) directly. All side-effect actions must go through the provided `ExecutionContext`. This ensures nodes are secure and portable across local development and cloud runner infrastructures.
-4. **Reusable Capabilities**: Design plugins around *capabilities*, not singular nodes. A capability pack can expose multiple nodes (e.g. `Normalize Text`, `Tokenize Text`) that all import and share the same core algorithms inside `core/`.
+3. **Reusable Capabilities**: Design plugins around *capabilities*, not singular nodes. A capability pack can expose multiple nodes (e.g. `Normalize Text`, `Tokenize Text`) that all import and share the same core algorithms inside `core/`.
+
+---
+
+## Definition of Done (DoD)
+
+A node is only complete and ready to merge when it has:
+* **Working Implementation**: Core algorithm is separated from the adapter.
+* **Validation**: Validates user configuration parameters before running.
+* **Documentation**: Contains a `README.md` and a generated `docs.md` (using `flowweaver generate-docs`).
+* **Example Pipeline**: Contains testable parameter configuration schemas in `examples/basic.json`.
+* **Unit Tests**: Full coverage for the adapter, the core algorithm, and example regression verification.
+* **Benchmark**: Performance metrics registered in `benchmarks/benchmark.py`.
+* **Preview Support**: Support for `preview()` method to calculate subsets of dataset output for the UI.
+* **Actionable Error Messages**: Friendly error explanations and recommendations when parameters or columns are missing.
 
 ---
 

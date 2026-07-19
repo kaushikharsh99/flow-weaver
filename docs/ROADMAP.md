@@ -1,138 +1,115 @@
-# FlowWeaver Project Roadmap
+# FlowWeaver Project Roadmap (v1.0)
 
-This document outlines the strategic roadmap for FlowWeaver, a visual pipeline builder. It details our planned milestones from MVP through to the v1.0 stable release.
+**Vision:** FlowWeaver is an open-source visual preprocessing platform for AI datasets. 
+We focus exclusively on providing a stellar data cleaning, filtering, tokenizing, and restructuring experience for AI/ML researchers. Out of scope for v1.0: workflow orchestrators, complex cloud scheduling, auth/RBAC, marketplaces, billing, and distributed cluster scheduling.
 
-## Overview
+---
+
+## Roadmap Phases
 
 ```mermaid
 gantt
-    title FlowWeaver Roadmap
+    title FlowWeaver v1.0 Roadmap
     dateFormat  YYYY-MM-DD
-    axisFormat  %M
+    axisFormat  Phase %q
     
-    section Milestone 1: MVP
-    UI & Backend Integration     :a1, 2024-01-01, 30d
-    Project & Storage Management :a2, after a1, 15d
-    Registry & Sequential Engine :a3, after a2, 15d
-
-    section Milestone 2: Alpha
-    Node Expansion (20+)         :b1, 2024-03-01, 20d
-    Plugin System                :b2, after b1, 20d
-    Streaming & Validation       :b3, after b2, 20d
-
-    section Milestone 3: Beta
-    Parallel Execution           :c1, 2024-05-01, 25d
-    Caching & Templates          :c2, after c1, 25d
-    AI Generation & Workers      :c3, after c2, 40d
-
-    section Milestone 4: v1.0
-    SDK & Marketplace            :d1, 2024-08-01, 45d
-    Auth, RBAC, Versioning       :d2, after d1, 45d
-    Docs & Production Guides     :d3, after d2, 30d
+    section Core Infrastructure
+    Phase 1: Freeze the Foundation     :done, a1, 2026-07-01, 20d
+    Phase 2: Frictionless Development   :active, a2, after a1, 20d
+    Phase 3: Framework Quality          :a3, after a2, 30d
+    
+    section Node Library & Templates
+    Phase 4: First Real Node Collection :b1, after a3, 30d
+    Phase 5: Out-of-the-Box Templates   :b2, after b1, 20d
+    
+    section Publishing & Polish
+    Phase 6: Documentation Website      :c1, after b2, 20d
+    Phase 7: Team Expansion & Scaling   :c2, after c1, 20d
+    Phase 8: Polish & Previews          :c3, after c2, 15d
+    Phase 9: Public Alpha Release       :c4, after c3, 15d
 ```
-*(Dates in the Gantt chart are illustrative, representing the monthly progression described below.)*
 
 ---
 
-## Milestone 1 — MVP (Month 1-2)
+## Detailed Roadmap Phases
 
-The goal of the MVP is to transition from a pure frontend simulation to a functional full-stack application capable of executing simple, linear data processing pipelines.
-
-**Deliverables**
-- UI connected to backend REST API.
-- Project management capabilities (Create, List, Edit, Delete).
-- Save and load pipelines to a persistent database (e.g., SQLite or Postgres).
-- Basic node registry integration on the backend.
-- Sequential execution engine supporting basic data passing between nodes.
-- A fully working end-to-end example: CSV Loader → Normalize → Export.
-
-**Success Criteria**
-- A user can create a pipeline, configure nodes, save it, and run it successfully.
-- Data successfully flows from the CSV node to the Export node.
-
-**Dependencies**
-- Finalization of the API Contract (Phase 7).
-- Selection of backend tech stack (e.g., Node.js/Python).
-
-**Risks**
-- **Data Serialization:** Moving data efficiently between nodes in memory vs on disk during execution.
+### Phase 1 — Freeze the Foundation (Current)
+**Goal:** Freeze the API specs and engine core to prevent downstream breaking changes.
+* **APIs to Freeze:**
+  - Declarative Node SDK & Node metaclass decorator
+  - Workspace directory auto-discovery & loading
+  - REST & WebSocket communication contracts
+  - Graph compiler (Validator → Builder → Optimizer → Planner → Runner)
+  - `Dataset` abstract base layers (Tabular, Polars, Arrow, Streaming)
+* **Status:** Complete.
 
 ---
 
-## Milestone 2 — Alpha (Month 3-4)
-
-The Alpha phase focuses on expanding capabilities, improving the developer experience for adding nodes, and giving users better visibility into pipeline executions.
-
-**Deliverables**
-- Expansion of built-in nodes (20+ standard nodes across Loaders, Filters, Transforms).
-- Plugin loading system architecture (ability to dynamically load new node definitions).
-- Streaming execution updates via WebSockets.
-- Detailed execution logs and history retention.
-- Dataset preview functionality in the UI (viewing samples of data at node boundaries).
-- Pre-execution pipeline validation (cycle detection, required schema checks).
-
-**Success Criteria**
-- Users can view real-time progress of running pipelines.
-- Users can inspect the output data of intermediate nodes.
-- Developers can write and load a simple custom node plugin.
-
-**Dependencies**
-- Milestone 1 backend stability.
-- WebSocket infrastructure implementation.
-
-**Risks**
-- **UI Performance:** Handling high-frequency WebSocket events for streaming logs and status updates without crashing the React UI.
+### Phase 2 — Frictionless Node Development
+**Goal:** Ensure external developers can construct nodes quickly and independently.
+* **Deliverables:**
+  - One CLI command (`flowweaver create-node`) to generate the full "Node-as-Adapter" layout.
+  - Automatic directory scanning and registration (zero code config).
+  - Backend configuration properties auto-generating visual UI inputs in the frontend Inspector.
+  - Automatic documentation (`flowweaver generate-docs`) and test scaffolds.
+  - Better templates for Loader, Filter, Transform, and Exporter categories.
+  - Pre-packaging validation schemas.
 
 ---
 
-## Milestone 3 — Beta (Month 5-7)
-
-Beta is about scaling execution, improving productivity, and preparing the architecture for enterprise use cases.
-
-**Deliverables**
-- Parallel execution engine (running independent branches of a DAG simultaneously).
-- Caching and checkpoints (skip re-running nodes if inputs/config haven't changed).
-- Pipeline templates system (save as template, instantiate from template).
-- AI-assisted pipeline generation (text-to-pipeline).
-- Team collaboration basics (shared workspaces).
-- Worker system for long-running jobs (separating API server from execution workers).
-
-**Success Criteria**
-- A complex DAG executes faster due to parallelization.
-- Re-running a failed pipeline only executes from the point of failure (thanks to checkpoints).
-- Users can successfully generate a starter pipeline using an AI prompt.
-
-**Dependencies**
-- Task queue infrastructure (e.g., Redis + Celery/BullMQ) for the worker system.
-
-**Risks**
-- **State Management:** Accurately invalidating caches when node configurations change.
-- **Complexity:** Parallel execution engine debugging is significantly harder than sequential.
+### Phase 3 — Framework Quality
+**Goal:** Elevate compiler telemetry, exception handling, and error routing for researchers.
+* **Deliverables:**
+  1. **Better Error System:** Format exceptions showing Node context, exact problem, current state, and action recommendation (e.g. Column "text" not found, available columns: title, body, summary).
+  2. **Better Logging:** Clear stage summaries (e.g. `Normalize: 1.2M rows`) with clean error output instead of raw Python interpreter stack traces.
+  3. **Progress System:** Expose real-time execution states: Starting, Running, Progress %, Finished, Failed.
+  4. **Preview Engine:** Render dataset columns, schema, row counts, and memory footprint in the frontend Inspector dynamically without exporting data.
+  5. **Pre-Run Validation:** Catch missing parameters, invalid regex values, and disconnected ports before running the engine.
 
 ---
 
-## Milestone 4 — v1.0 (Month 8-12)
+### Phase 4 — First Real Node Collection
+**Goal:** Hand-craft 20 high-fidelity nodes representing typical AI dataset cleaning tasks.
+* **Loaders:** CSV, JSON, JSONL, Parquet, Hugging Face Dataset
+* **Cleaning:** Lowercase, Strip HTML, Remove Empty, Unicode Normalize, Regex Replace
+* **Filters:** Length Filter, Language Filter, Duplicate Filter
+* **Transform:** Tokenizer, Chunking/Splitting, Column Renamer
+* **Export:** CSV, JSONL, Parquet, HF Dataset Upload
 
-The 1.0 release is focused on stability, security, extensibility, and community building.
+---
 
-**Deliverables**
-- Stable Plugin SDK with strong typing and test harnesses.
-- Plugin marketplace / registry for community contributions.
-- Distributed workers (scaling out execution across multiple machines).
-- Authentication and Role-Based Access Control (RBAC).
-- Pipeline versioning (commit history for pipelines).
-- Comprehensive production deployment guides (Helm charts, Docker Compose).
-- Complete user and developer documentation.
+### Phase 5 — Templates Gallery
+**Goal:** Ship out-of-the-box pipeline templates so researchers don't start with a blank canvas.
+* **Included Templates:**
+  - LLM Fine-Tuning Prep
+  - Retrieval Augmented Generation (RAG) Document Parser
+  - TinyStories Dataset Cleaning
+  - ShareGPT Preprocessing
+  - OCR Output Post-Processing
+  - Common Crawl Filtering
 
-**Success Criteria**
-- FlowWeaver can be deployed securely in a production Kubernetes cluster.
-- A 3rd party developer can publish a plugin and another user can install it.
-- Multiple users can collaborate securely with different permission levels.
+---
 
-**Dependencies**
-- Stable beta release.
-- Thorough security audit.
+### Phase 6 — Documentation Website
+**Goal:** Deploy a clean, accessible docs portal containing guides, FAQs, and API definitions.
+* **Sections:** Getting Started, Installation, Architecture, SDK reference, Creating Nodes, Plugin Development, Examples, CLI reference.
 
-**Risks**
-- **API Churn:** Locking in the Plugin SDK means breaking changes must be strictly managed.
-- **Security:** Distributed execution of arbitrary code (plugins) requires strong sandboxing or trusted environments.
+---
+
+### Phase 7 — Team Expansion
+**Goal:** Onboard the core team to develop nodes and pipeline templates under standard rules.
+* **Separation of Work:**
+  - *Core Architects:* SDK, compiler, graph optimizer, runner runtime.
+  - *Team Contributors:* Custom nodes, dataset cleaning plugins, benchmarks, guides.
+
+---
+
+### Phase 8 — User Experience Polish
+**Goal:** Deliver small quality-of-life enhancements that make the tool feel premium.
+* **Polish areas:** Interactive canvas performance, keyboard shortcuts, canvas undo/redo, responsive search, empty-state helpers, node search icons.
+
+---
+
+### Phase 9 — Public Alpha
+**Goal:** Release FlowWeaver to the AI researcher community.
+* **Action:** Collect telemetry and usage metrics, fix performance bottlenecks on real-world multi-gigabyte datasets, and iterate the design.
