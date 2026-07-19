@@ -101,7 +101,7 @@ Register this plugin directory inside the FlowWeaver plugins directory, or deplo
 
 
 def create_node(name: str, category: str):
-    """Scaffolds a single capability plugin with Node adapter, Service, Core logic, tests, and benchmarks."""
+    """Scaffolds a single node package with tests, benchmarks, and category-specific templates."""
     safe_name = name.lower().replace("-", "_").replace(" ", "_")
     base_path = os.path.join(os.getcwd(), name)
     
@@ -109,7 +109,7 @@ def create_node(name: str, category: str):
         print(f"Error: Directory '{name}' already exists.")
         sys.exit(1)
         
-    print(f"Creating modular node template at: {base_path}...")
+    print(f"Creating modular {category} node template at: {base_path}...")
     
     # Create directory structure
     dirs = [
@@ -118,7 +118,8 @@ def create_node(name: str, category: str):
         "utils",
         "tests",
         "examples",
-        "benchmarks"
+        "benchmarks",
+        "data"
     ]
     for d in dirs:
         os.makedirs(os.path.join(base_path, d), exist_ok=True)
@@ -126,35 +127,178 @@ def create_node(name: str, category: str):
             with open(os.path.join(base_path, d, "__init__.py"), "w") as f:
                 f.write(f"# {d} package\n")
 
+    # Generate sample datasets
+    sample_csv = "id,name,score\n1,Alpha,92.5\n2,Beta,78.1\n3,Gamma,88.0\n4,Delta,62.4\n"
+    with open(os.path.join(base_path, "data", "sample.csv"), "w") as f:
+        f.write(sample_csv)
+
+    sample_json = '[\n  {"id": 1, "text": "FlowWeaver is awesome", "label": "pos"},\n  {"id": 2, "text": "This preprocessor is fast", "label": "pos"},\n  {"id": 3, "text": "Errors are descriptive", "label": "neutral"}\n]\n'
+    with open(os.path.join(base_path, "data", "sample.json"), "w") as f:
+        f.write(sample_json)
+
+    # Setup category specific parameters, inputs/outputs, and implementation templates
     if category == "Loader":
         inputs_str = ""
-        outputs_str = "    out = Output.tabular()\n"
-        service_call = "return {'out': service.run(ctx)}"
-    elif category == "Transform":
-        inputs_str = "    in_data = Input.tabular()\n"
-        outputs_str = "    out = Output.tabular()\n"
-        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
+        outputs_str = "    out = Output.tabular(label=\"Loaded Rows\")\n"
+        params_str = '    file_path = Param.file(label="CSV File Path", default="data/sample.csv", accept=".csv", description="Path to the CSV dataset file")\n    delimiter = Param.select(label="Delimiter", default=",", options=[{"label": "Comma", "value": ","}, {"label": "Semicolon", "value": ";"}])'
+        service_call = "return {'out': service.run(ctx.parameters.get('file_path'), ctx.parameters.get('delimiter', ','), ctx)}"
+        
+        core_alg = """import csv
+from flowweaver.sdk import TabularDataset
+
+def process_data(file_path, delimiter, ctx=None):
+    \"\"\"Reads a CSV file and loads it into a TabularDataset.\"\"\"
+    if ctx:
+        ctx.log(f"Reading dataset from path: {file_path}")
+    
+    rows = []
+    columns = []
+    try:
+        with open(file_path, mode='r', encoding='utf-8') as f:
+            reader = csv.reader(f, delimiter=delimiter)
+            columns = next(reader) if reader else []
+            for row in reader:
+                if len(row) == len(columns):
+                    rows.append(dict(zip(columns, row)))
+    except FileNotFoundError:
+        # Fallback to local default file path if relative path runs inside project root
+        alt_path = "data/sample.csv"
+        with open(alt_path, mode='r', encoding='utf-8') as f:
+            reader = csv.reader(f, delimiter=delimiter)
+            columns = next(reader) if reader else []
+            for row in reader:
+                if len(row) == len(columns):
+                    rows.append(dict(zip(columns, row)))
+                    
+    return TabularDataset(rows, columns=columns)
+"""
+        basic_example = {"file_path": "data/sample.csv", "delimiter": ","}
+
     elif category == "Filter":
-        inputs_str = "    in_data = Input.tabular()\n"
-        outputs_str = "    out = Output.tabular()\n"
-        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
+        inputs_str = "    in_data = Input.tabular(label=\"Source Rows\")\n"
+        outputs_str = "    out = Output.tabular(label=\"Filtered Rows\")\n"
+        params_str = '    column = Param.column(label="Filter Column", default="score", description="Column to apply comparison filter")\n    min_value = Param.number(label="Min Threshold", default=80.0, description="Keep values greater than or equal to this limit")'
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx.parameters.get('column'), ctx.parameters.get('min_value'), ctx)}"
+        
+        core_alg = """from flowweaver.sdk import TabularDataset
+
+def process_data(dataset, column, min_value, ctx=None):
+    \"\"\"Filters dataset rows matching comparison constraint.\"\"\"
+    if not dataset:
+        return TabularDataset([], columns=[])
+        
+    rows = dataset.to_list()
+    filtered_rows = []
+    
+    if ctx:
+        ctx.log(f"Filtering {len(rows)} rows on column '{column}' >= {min_value}")
+        
+    for r in rows:
+        try:
+            val = float(r.get(column, 0))
+            if val >= float(min_value):
+                filtered_rows.append(r)
+        except ValueError:
+            # Skip rows with non-numeric fields
+            continue
+            
+    return TabularDataset(filtered_rows, columns=dataset.columns())
+"""
+        basic_example = {"column": "score", "min_value": 80.0}
+
+    elif category == "Transform":
+        inputs_str = "    in_data = Input.tabular(label=\"Source Rows\")\n"
+        outputs_str = "    out = Output.tabular(label=\"Modified Rows\")\n"
+        params_str = '    target_column = Param.column(label="Column to Edit", default="name")\n    suffix = Param.text(label="Suffix String", default=" [Validated]", description="String to append to column values")'
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx.parameters.get('target_column'), ctx.parameters.get('suffix'), ctx)}"
+        
+        core_alg = """from flowweaver.sdk import TabularDataset
+
+def process_data(dataset, target_col, suffix, ctx=None):
+    \"\"\"Appends a string suffix to a targeted dataset column.\"\"\"
+    if not dataset:
+        return TabularDataset([], columns=[])
+        
+    rows = dataset.to_list()
+    processed_rows = []
+    
+    for r in rows:
+        new_row = r.copy()
+        if target_col in new_row:
+            new_row[target_col] = f"{new_row[target_col]}{suffix}"
+        processed_rows.append(new_row)
+        
+    if ctx:
+        ctx.log(f"Appended suffix '{suffix}' to column '{target_col}' across {len(processed_rows)} rows")
+        
+    return TabularDataset(processed_rows, columns=dataset.columns())
+"""
+        basic_example = {"target_column": "name", "suffix": " [Validated]"}
+
     elif category == "Exporter":
-        inputs_str = "    in_data = Input.any()\n"
+        inputs_str = "    in_data = Input.any(label=\"Data Input\")\n"
         outputs_str = ""
-        service_call = "in_val = inputs.get('in_data')\n        service.run(in_val, ctx)\n        return {}"
+        params_str = '    output_path = Param.file(label="Save Destination", default="data/exported.json", accept=".json", description="Target path to serialize records")'
+        service_call = "in_val = inputs.get('in_data')\n        service.run(in_val, ctx.parameters.get('output_path'), ctx)\n        return {}"
+        
+        core_alg = """import json
+
+def process_data(dataset, output_path, ctx=None):
+    \"\"\"Serializes the dataset records into a JSON document.\"\"\"
+    if not dataset:
+        return
+        
+    records = dataset.to_list()
+    if ctx:
+        ctx.log(f"Writing {len(records)} records to destination: {output_path}")
+        
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(records, f, indent=2)
+"""
+        basic_example = {"output_path": "data/exported.json"}
+
     elif category == "AI":
-        inputs_str = "    in_text = Input.text()\n"
-        outputs_str = "    out = Output.text()\n"
-        service_call = "in_val = inputs.get('in_text')\n        return {'out': service.run(in_val, ctx)}"
+        inputs_str = "    in_text = Input.text(label=\"Source Text\")\n"
+        outputs_str = "    out = Output.text(label=\"AI Output\")\n"
+        params_str = '    prompt_prefix = Param.textarea(label="Prompt Prefix", default="Summarize the following text:\\n")'
+        service_call = "in_val = inputs.get('in_text')\n        return {'out': service.run(in_val, ctx.parameters.get('prompt_prefix'), ctx)}"
+        
+        core_alg = """from flowweaver.sdk import TabularDataset
+
+def process_data(dataset, prompt_prefix, ctx=None):
+    \"\"\"Simulates AI text processing.\"\"\"
+    if not dataset:
+        return TabularDataset([], columns=["text"])
+        
+    rows = dataset.to_list()
+    output_rows = []
+    
+    for r in rows:
+        text = r.get("text", "")
+        # Dummy AI translation/summary simulation
+        summary = f"{prompt_prefix}{text[:15]}..."
+        output_rows.append({"original": text, "ai_result": summary})
+        
+    return TabularDataset(output_rows, columns=["original", "ai_result"])
+"""
+        basic_example = {"prompt_prefix": "Summarize: "}
     else:
         inputs_str = "    in_data = Input.any()\n"
         outputs_str = "    out = Output.any()\n"
-        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
+        params_str = '    example_param = Param.text(label="Example Param", default="value")'
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx.parameters.get('example_param'), ctx)}"
+        
+        core_alg = """def process_data(data, param_val, ctx=None):
+    if ctx:
+        ctx.log(f"Processing data with param: {param_val}")
+    return data
+"""
+        basic_example = {"example_param": "value"}
 
     class_name = "".join(part.title() for part in safe_name.split("_")) + "Node"
     service_name = "".join(part.title() for part in safe_name.split("_")) + "Service"
 
-    # 1. node.py (FlowWeaver Interface Adapter - under 200 lines)
+    # 1. node.py (Adapter)
     node_py = f"""from typing import Dict, Any
 from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext
 from service import {service_name}
@@ -167,8 +311,8 @@ class {class_name}(Node):
     This file must remain under 200 lines and avoid direct OS, network, or DB calls.
     \"\"\"
 {inputs_str}{outputs_str}
-    # Parameters
-    example_param = Param.text(label="Example Param", default="value", description="An example input param")
+    # Configuration Parameters
+{params_str}
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         ctx.log("Delegating execution to Service layer.")
@@ -192,25 +336,13 @@ class {service_name}:
         if ctx:
             log_info(ctx, "Orchestrating logic inside Service layer.")
         
-        # Extract inputs/parameters and delegate to core/
-        data = args[0] if len(args) > 1 else None
-        return process_data(data, ctx)
+        # Unpack params, delegate to core logic
+        return process_data(*args[:-1], ctx=ctx)
 """
     with open(os.path.join(base_path, "service.py"), "w") as f:
         f.write(service_py.strip() + "\n")
 
-    # 3. core/algorithm.py (Core reusable computational package)
-    core_alg = f"""def process_data(data, ctx=None):
-    \"\"\"Core reusable algorithm. Pure Python logic.
-    Does not depend on any FlowWeaver nodes or adapters.
-    \"\"\"
-    if ctx:
-        param_val = ctx.parameters.get("example_param", "default")
-        ctx.log(f"Processing data in core algorithm with parameter: {{param_val}}")
-    
-    # Implement actual business logic / algorithms here
-    return data
-"""
+    # 3. core/algorithm.py (Core)
     with open(os.path.join(base_path, "core", "algorithm.py"), "w") as f:
         f.write(core_alg.strip() + "\n")
 
@@ -261,11 +393,71 @@ def test_node_execute():
     with open(os.path.join(base_path, "tests", "test_node.py"), "w") as f:
         f.write(test_node_py.strip() + "\n")
 
-    test_alg_py = f"""from core.algorithm import process_data
+    if category == "Loader":
+        test_alg_py = """from core.algorithm import process_data
+import os
 
 def test_algorithm_logic():
-    # Test the core pure-python computational logic directly
-    result = process_data("test_input")
+    # Test the core loader function
+    sample_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'sample.csv')
+    dataset = process_data(sample_path, ",")
+    assert dataset is not None
+    assert dataset.row_count() == 4
+    assert dataset.columns() == ["id", "name", "score"]
+"""
+    elif category == "Filter":
+        test_alg_py = """from core.algorithm import process_data
+from flowweaver.sdk import TabularDataset
+
+def test_algorithm_logic():
+    # Test the core filter logic
+    data = TabularDataset([{"score": 90}, {"score": 60}], columns=["score"])
+    filtered = process_data(data, "score", 80)
+    assert filtered.row_count() == 1
+    assert filtered.to_list()[0]["score"] == 90
+"""
+    elif category == "Transform":
+        test_alg_py = """from core.algorithm import process_data
+from flowweaver.sdk import TabularDataset
+
+def test_algorithm_logic():
+    data = TabularDataset([{"name": "Alice"}], columns=["name"])
+    transformed = process_data(data, "name", " [Validated]")
+    assert transformed.to_list()[0]["name"] == "Alice [Validated]"
+"""
+    elif category == "Exporter":
+        test_alg_py = """from core.algorithm import process_data
+from flowweaver.sdk import TabularDataset
+import os
+import json
+
+def test_algorithm_logic():
+    data = TabularDataset([{"id": 1}], columns=["id"])
+    out_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'temp_exported.json')
+    try:
+        process_data(data, out_path)
+        assert os.path.exists(out_path)
+        with open(out_path) as f:
+            exported = json.load(f)
+        assert len(exported) == 1
+    finally:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+"""
+    elif category == "AI":
+        test_alg_py = """from core.algorithm import process_data
+from flowweaver.sdk import TabularDataset
+
+def test_algorithm_logic():
+    data = TabularDataset([{"text": "Sample sentence"}], columns=["text"])
+    res = process_data(data, "Prompt: ")
+    assert res.to_list()[0]["ai_result"].startswith("Prompt: ")
+"""
+    else:
+        test_alg_py = f"""from core.algorithm import process_data
+
+def test_algorithm_logic():
+    result = process_data("test_input", "value")
     assert result == "test_input"
 """
     with open(os.path.join(base_path, "tests", "test_algorithm.py"), "w") as f:
@@ -280,20 +472,33 @@ def test_examples():
     assert os.path.exists(example_file)
     with open(example_file) as f:
         data = json.load(f)
-    assert "example_param" in data
+    assert len(data) > 0
 """
     with open(os.path.join(base_path, "tests", "test_examples.py"), "w") as f:
         f.write(test_ex_py.strip() + "\n")
 
     # 8. examples
     with open(os.path.join(base_path, "examples", "basic.json"), "w") as f:
-        json.dump({"example_param": "value"}, f, indent=2)
+        json.dump(basic_example, f, indent=2)
         f.write("\n")
     with open(os.path.join(base_path, "examples", "advanced.json"), "w") as f:
-        json.dump({"example_param": "advanced_value"}, f, indent=2)
+        json.dump(basic_example, f, indent=2)
         f.write("\n")
 
     # 9. benchmarks/benchmark.py
+    if category == "Loader":
+        bench_call = "process_data('data/sample.csv', ',')"
+    elif category == "Filter":
+        bench_call = "from flowweaver.sdk import TabularDataset\\n    data = TabularDataset([{'score': 90}], ['score'])\\n    process_data(data, 'score', 80)"
+    elif category == "Transform":
+        bench_call = "from flowweaver.sdk import TabularDataset\\n    data = TabularDataset([{'name': 'Alice'}], ['name'])\\n    process_data(data, 'name', ' [Validated]')"
+    elif category == "Exporter":
+        bench_call = "from flowweaver.sdk import TabularDataset\\n    data = TabularDataset([{'id': 1}], ['id'])\\n    process_data(data, 'data/exported.json')"
+    elif category == "AI":
+        bench_call = "from flowweaver.sdk import TabularDataset\\n    data = TabularDataset([{'text': 'Sample'}], ['text'])\\n    process_data(data, 'Prefix: ')"
+    else:
+        bench_call = "process_data('data', 'value')"
+
     benchmark_py = f"""import time
 from core.algorithm import process_data
 
@@ -301,7 +506,7 @@ def run_benchmark():
     print("Running performance benchmark...")
     start = time.time()
     for _ in range(1000):
-        process_data("benchmark_data")
+        {bench_call}
     duration = time.time() - start
     print(f"Completed 1000 runs in {{duration:.4f}}s")
 
@@ -311,7 +516,7 @@ if __name__ == "__main__":
     with open(os.path.join(base_path, "benchmarks", "benchmark.py"), "w") as f:
         f.write(benchmark_py.strip() + "\n")
 
-    print(f"Successfully generated modular capability plugin '{name}'!")
+    print(f"Successfully generated modular {category} capability plugin '{name}'!")
 
 
 def _load_node_class(path: str):
@@ -366,7 +571,13 @@ def test_node(path: str):
         ctx = MockCtx(params)
         sys.path.insert(0, os.path.abspath(path))
         try:
-            instance.execute({}, ctx)
+            # Set relative path adjustments so loaders resolve "data/sample.csv" relative to target path
+            cwd = os.getcwd()
+            os.chdir(os.path.abspath(path))
+            try:
+                instance.execute({}, ctx)
+            finally:
+                os.chdir(cwd)
         finally:
             sys.path.pop(0)
         print("PASS")
@@ -375,18 +586,18 @@ def test_node(path: str):
         sys.exit(1)
 
 
-def lint_node(path: str):
+def lint_node(path: str) -> bool:
     print(f"Linting node at {path}...")
     
     node_file = os.path.join(path, "node.py")
     if not os.path.exists(node_file):
         print(f"Error: node.py not found in {path}")
-        sys.exit(1)
+        return False
 
     node_class = _load_node_class(path)
     if not node_class:
         print("Error: Could not find a Node subclass in node.py")
-        sys.exit(1)
+        return False
 
     has_error = False
 
@@ -437,9 +648,10 @@ def lint_node(path: str):
 
     if has_error:
         print("Linting failed with errors.")
-        sys.exit(1)
+        return False
     else:
         print("Linting passed.")
+        return True
 
 
 def generate_docs(path: str):
@@ -511,6 +723,13 @@ def generate_docs(path: str):
 
 def package_plugin(path: str):
     print(f"Packaging plugin at {path}...")
+    
+    # Validation step before packaging (Phase 2 constraint)
+    print("Verifying node constraints and style rules before packaging...")
+    if not lint_node(path):
+        print("Error: Packaging aborted due to linting validation failures.")
+        sys.exit(1)
+
     plugin_yaml_path = os.path.join(path, "plugin.yaml")
     if not os.path.exists(plugin_yaml_path):
         print(f"Error: plugin.yaml not found in {path}")
@@ -535,6 +754,7 @@ def package_plugin(path: str):
     with open("manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
         
+    print(f"Successfully packaged archive with SHA-256 manifest.")
     print(f"Output path: {os.path.abspath(tar_filename)}")
 
 
@@ -570,7 +790,8 @@ def main():
     elif args.command == "test-node":
         test_node(args.path)
     elif args.command == "lint-node":
-        lint_node(args.path)
+        if not lint_node(args.path):
+            sys.exit(1)
     elif args.command == "generate-docs":
         generate_docs(args.path)
     elif args.command == "package-plugin":
