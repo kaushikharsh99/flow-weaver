@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, StickyNote } from "lucide-react";
-import { CATEGORIES, NODE_TYPES } from "../nodeTypes";
+import { CATEGORIES, NODE_TYPES, getIcon } from "../nodeTypes";
 import { useStore } from "../store";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +51,7 @@ export function Sidebar() {
           {CATEGORIES.map(cat => {
             const first = NODE_TYPES.find(n => n.category === cat);
             if (!first) return null;
-            const Icon = first.icon;
+            const Icon = getIcon(first.icon);
             return (
               <button key={cat} title={cat} className="p-2 rounded-lg hover:bg-white/5"
                 style={{ color: first.color }}>
@@ -110,7 +110,7 @@ export function Sidebar() {
                   >
                     <div className="pl-2 py-0.5 space-y-0.5">
                       {items.map(n => {
-                        const Icon = n.icon;
+                        const Icon = getIcon(n.icon);
                         return (
                           <div
                             key={n.id}

@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, AlertCircle, Ban } from "lucide-react";
-import { NODE_TYPE_MAP, PORT_TYPE_COLOR } from "../nodeTypes";
+import { NODE_TYPE_MAP, PORT_TYPE_COLOR, getIcon } from "../nodeTypes";
 import { useStore, type PipelineNodeData } from "../store";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,7 @@ function PipelineNodeInner({ id, data, selected }: NodeProps<PipelineNodeData>) 
   const updateTitle = useStore(s => s.updateNodeTitle);
   const setCollapsed = useStore(s => s.setNodeCollapsed);
   if (!def) return null;
-  const Icon = def.icon;
+  const Icon = getIcon(def.icon);
   const collapsed = !!data.collapsed;
   const status = data.runtime.status;
 

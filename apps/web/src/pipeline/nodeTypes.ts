@@ -457,3 +457,14 @@ export function typesCompatible(a?: string, b?: string) {
   if (a === "any" || b === "any") return true;
   return a === b;
 }
+
+import * as LucideIcons from "lucide-react";
+
+export function getIcon(icon: any): LucideIcons.LucideIcon {
+  if (typeof icon === "string") {
+    // Map string names to Lucide icons
+    const Icon = (LucideIcons as any)[icon];
+    return Icon || LucideIcons.HelpCircle;
+  }
+  return icon || LucideIcons.HelpCircle;
+}

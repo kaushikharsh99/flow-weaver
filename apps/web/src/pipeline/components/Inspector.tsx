@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sliders, Eye, StickyNote, AlertTriangle } from "lucide-react";
-import { NODE_TYPE_MAP } from "../nodeTypes";
+import { NODE_TYPE_MAP, getIcon } from "../nodeTypes";
 import { useStore } from "../store";
 import type { MockPreview, ParamField } from "../types";
 import { cn } from "@/lib/utils";
@@ -211,7 +211,10 @@ export function Inspector() {
               className="flex h-6 w-6 items-center justify-center rounded-md"
               style={{ backgroundColor: def!.color + "33", color: def!.color }}
             >
-              <def.icon size={13} />
+              {(() => {
+                const IconComponent = getIcon(def!.icon);
+                return <IconComponent size={13} />;
+              })()}
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[12px] font-medium truncate text-white/90">{node!.data.title}</div>
