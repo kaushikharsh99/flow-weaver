@@ -14,6 +14,12 @@ flow-weaver/
 │   ├── api/                 # FastAPI Backend Service
 │   │   ├── app/
 │   │   │   ├── engine/      # Core Execution Engine & Node Registry
+│   │   │   │   ├── compiler/# Compiler Pipeline Subsystem
+│   │   │   │   │   ├── builder.py    # Converts JSON to logical DAG Tasks
+│   │   │   │   │   ├── models.py     # Pydantic compile-time schemas
+│   │   │   │   │   ├── optimizer.py  # Cache/Checkpoints optimization rules
+│   │   │   │   │   ├── planner.py    # Generates layered execution plans
+│   │   │   │   │   └── validator.py  # Run cycles & semantic safety checks
 │   │   │   │   ├── nodes/   # Individual Python Node Implementations
 │   │   │   │   ├── base.py
 │   │   │   │   ├── registry.py
@@ -79,3 +85,15 @@ Configured in `apps/api/app/models.py`. Standard tables:
 ## 5. Dev Orchestration
 
 To run the full stack concurrently, execute `./run.py` at the root folder. It sets up the python virtual environment, installs dependencies, and runs Vite and Uvicorn.
+
+---
+
+## 6. Compiler Pipeline (Plan & Compilation)
+
+FlowWeaver compiles visual pipelines prior to running them:
+
+1. **Semantic Validator** (`validator.py`): Validates schemas, parameters, required inputs connectivity, and checks for DAG cycles.
+2. **Graph Builder** (`builder.py`): Translates raw JSON representation into logical tasks mapping input-to-output handles.
+3. **Graph Optimizer** (`optimizer.py`): Evaluates caching rules, checkpoint states, and disabled tasks.
+4. **Execution Planner** (`planner.py`): Organizes execution into sequential stages, separating concurrent tasks.
+5. **DAG Executor** (`runner.py`): Consumes plan stages and executes tasks, streaming logs and updates via WebSockets.

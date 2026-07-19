@@ -26,19 +26,24 @@ This document records the exact milestones, phases, and files implemented during
 - Configured root workspaces in `package.json` and type references in `tsconfig.json`.
 - Scaffolded FastAPI with models (`models.py`), request schemas (`schemas.py`), endpoints (`routes/`), and database connection parameters (`db.py`).
 
+### Phase 3 / 6 Compiler Layer Refactor (Staged execution planner)
+- Designed and built a modular compiler subsystem in `apps/api/app/engine/compiler/`:
+  - **`models.py`**: Pydantic models for `Task`, `ExecutionPlan`, and `ValidationError`.
+  - **`validator.py`**: A **Semantic Validator** for syntax checks, connectivity validation, schema parameters validation, and cycle detection.
+  - **`builder.py`**: A **Graph Builder** converting raw canvas JSON nodes/edges to dependency-sorted tasks.
+  - **`optimizer.py`**: A **Graph Optimizer** for evaluating node pruning and checkpoint caching.
+  - **`planner.py`**: An **Execution Planner** generating stage-based concurrent task execution profiles.
+- Overhauled `runner.py` to compile raw pipelines prior to running, validating port configurations and staging concurrency loops.
+
 ### Phase 5 — Dynamic Node Registry
 - Built the `NodeRegistry` in `apps/api/app/engine/registry.py` registering all 24 built-in nodes.
 - Exposed registry definitions over `/api/nodes` routes.
 - Created `getIcon` helper on the frontend (`nodeTypes.ts`) resolving Lucide Icons dynamically from backend string names.
 
-### Phase 6 — Backend Execution Engine
-- Implemented Kahn's Topological Sort cycle detector in `apps/api/app/engine/runner.py`.
-- Developed actual execution logic for data loading (`LoadCSV`, `LoadJSON`), filtering (`FilterRows`), and exporting (`WriteCSV`) along with simulated handlers for fallbacks.
-- Integrated websocket progress alerts inside `executions.py` running the engine inside a background worker thread.
-
 ### Phase 7 — HTTP API Client & WS Integration
 - Built `http-client.ts` implementing the REST endpoints.
 - Connected the frontend runner (`runner.ts`) to save local canvas states to the database and connect to the WS stream at `ws://localhost:8000/api/executions/{id}/stream` when starting execution.
 
-### Setup and Running Utilities
+### Setup, Run & Ignore Utilities
 - Created `run.py` at the project root to automate virtual environment setups, install backend Python dependencies, install npm workspaces, and run frontend and backend servers concurrently.
+- Configured python gitignores for `.pyc`, `venv/`, and `__pycache__` to keep commits clean.
