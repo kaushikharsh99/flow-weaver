@@ -21,14 +21,23 @@ flow-weaver/
 │   │   │   │   │   ├── planner.py    # Generates layered execution plans
 │   │   │   │   │   └── validator.py  # Run cycles & semantic safety checks
 │   │   │   │   ├── nodes/   # Individual Python Node Implementations
+│   │   │   │   │   ├── cleaning.py  # Lowercase, html-strip, empty-remove nodes
+│   │   │   │   │   ├── core_logic.py# Reusable computational library for nodes
+│   │   │   │   │   ├── exports.py   # Write CSV, JSONL, Parquet, HF uploaders
+│   │   │   │   │   ├── fallback.py  # Custom dynamic fallback node adapters
+│   │   │   │   │   ├── filters.py   # Row, length, language, dedup filters
+│   │   │   │   │   ├── loaders.py   # CSV, JSON, JSONL, Parquet, HF loaders
+│   │   │   │   │   └── stubs.py     # Stubs for remaining undeveloped nodes
 │   │   │   │   ├── base.py
 │   │   │   │   ├── registry.py  # Standard registry + local dynamic plugin loader
 │   │   │   │   └── runner.py    # Sequential DAG executor supporting breakpoints & profiling metrics
 │   │   │   ├── routes/      # REST API Routers & WS Channels (executions.py exposes pause/resume)
 │   │   │   ├── db.py        # SQLAlchemy context setup
 │   │   │   ├── models.py    # Database models (SQLite/Postgres)
-│   │   │   └── schemas.py   # Pydantic schemas
+│   │   │   ├── schemas.py   # Pydantic schemas
+│   │   │   └── seed.py      # Database seeder populating the 6 default pipeline templates
 │   │   ├── main.py          # FastAPI server entry point
+│   │   ├── Dockerfile       # Container setup for backend api
 │   │   └── requirements.txt
 │   └── web/                 # React Frontend Client
 │       ├── src/
@@ -42,6 +51,7 @@ flow-weaver/
 │       │   │   └── types.ts
 │       │   ├── styles.css
 │       │   └── ...
+│       ├── Dockerfile       # Container setup for frontend web app
 │       ├── package.json
 │       └── vite.config.ts
 ├── packages/                # Shared packages
@@ -51,19 +61,20 @@ flow-weaver/
 │       │   └── sdk/
 │       │       ├── __init__.py
 │       │       ├── artifact.py  # Artifact models
-│       │       ├── cli.py       # Plugin generator command parser
-│       │       ├── context.py   # ExecutionContext, Logger, Metrics
+│       │       ├── cli.py       # Plugin generator command parser (create-node templates)
+│       │       ├── context.py   # ExecutionContext, Logger, Metrics, progress/cancel hooks
 │       │       ├── dataset.py   # Dataset, TabularDataset, PolarsDataset, ArrowDataset, StreamingDataset
 │       │       └── node.py      # Base Node, Port, Parameter definitions
 │       └── setup.py
 ├── plugins/                 # Local dynamic plugins directory (scanned on boot)
-│   └── text_utils/          # Sample CLI-generated plugin
 ├── scripts/                 # Developer Lifecycle Control Suite
 │   ├── clean.py             # Remove compiler and packaging caches
 │   ├── doctor.py            # Environment checklist verification
 │   ├── install.py           # Onboarding setups (venv, npm install, DB schemas)
+│   ├── pre-commit-gate.py   # Pre-commit onboarding quality gate script
 │   ├── run.py               # Concurrently starts dev servers
 │   └── test.py              # Smoke test compilation & registry checks
+├── docker-compose.yml       # Monorepo container deployment mapping
 ├── package.json             # Root monorepo workspace configuration
 ├── tsconfig.json            # Root tsconfig path mapping
 └── run.py                   # Waker runner entry script (forwards to scripts/run.py)
@@ -85,19 +96,25 @@ You can toggle the frontend client between mock (in-memory) state and real HTTP 
 ## 3. Node Registry & Dynamic Plugin Loader
 
 The registry is the source of truth for available nodes, ports, and configuration options.
-- **Backend Registry** (`apps/api/app/engine/registry.py`): Implements `NodeRegistry` with 24 built-in nodes.
+- **Backend Registry** (`apps/api/app/engine/registry.py`): Implements `NodeRegistry` scanning subclasses dynamically.
 - **Dynamic Plugin Scanning**: Upon server boot (`main.py`), the registry calls `.load_local_plugins("plugins")`. It scans folders under the `plugins/` directory, parses their `plugin.yaml` manifest, and dynamically imports declared custom node classes at runtime using `importlib`.
 - **Frontend Integration**: Node list and parameters are retrieved dynamically from the `/api/nodes` route. Icons are resolved dynamically in components (`Sidebar.tsx`, `Inspector.tsx`, `NodeViews.tsx`) using the `getIcon()` utility.
 
 ---
 
-## 4. Database Schema (SQLite)
+## 4. Database Schema & Templates (SQLite)
 
 Configured in `apps/api/app/models.py`. Standard tables:
 - **`projects`**: Holds list of workspaces.
 - **`pipelines`**: Holds JSON nodes, edges, viewport, variables, and settings.
 - **`executions`**: Tracks active background runner status and logs.
-- **`templates`**: Holds reusable pipeline structures.
+- **`templates`**: Holds reusable pipeline structures. On startup, the database is seeded automatically with **6 default preprocessing templates**:
+  1. *LLM Fine-Tuning Prep*: Connects loaders, lowercaser, normalizer, empty filters, and writes JSONL.
+  2. *RAG Document Prep*: Connects JSON loading, html stripping, unicode normalization, word chunking, and JSONL exports.
+  3. *TinyStories Dataset Cleaning*: Connects story loading, html stripping, length filters, and CSV exports.
+  4. *ShareGPT Preprocessing*: Connects dialog loading, column renames, spacing replaces, and JSONL exports.
+  5. *OCR Post-Processing*: Connects OCR loading, punctuation correction, text filters, and CSV exports.
+  6. *Common Crawl Processing*: Connects crawl loading, html stripping, language filtering, exact deduplication, and Parquet exports.
 
 ---
 
@@ -110,6 +127,7 @@ Instead of mixing setup tasks during dev servers execution, project lifecycle co
 - **`doctor.py`**: Runs diagnostic checklist verifying dependency imports, environment files, free ports, Node/Python levels, and SQLite schema state.
 - **`test.py`**: Execution test suite testing semantic validators, planners, DAG compilers, and checking frontend type safety compiles clean.
 - **`clean.py`**: Deletes `__pycache__` artifacts, `.pytest_cache`, and Vite/setuptools caching build structures.
+- **`pre-commit-gate.py`**: Runs core tests, typechecks frontend workspaces, and lints scaffolded plugin directories to guarantee repository standards before pushing.
 
 ---
 
@@ -117,7 +135,7 @@ Instead of mixing setup tasks during dev servers execution, project lifecycle co
 
 FlowWeaver compiles visual pipelines prior to running them:
 
-1. **Semantic Validator** (`validator.py`): Validates schemas, parameters, required inputs connectivity, and checks for DAG cycles.
+1. **Semantic Validator** (`validator.py`): Validates schemas, parameters (including regex and JSON syntax constraints), required inputs connectivity, and checks for DAG cycles.
 2. **Graph Builder** (`builder.py`): Translates raw JSON representation into logical tasks mapping input-to-output handles.
 3. **Graph Optimizer** (`optimizer.py`): Evaluates caching rules, checkpoint states, and disabled tasks.
 4. **Execution Planner** (`planner.py`): Organizes execution into sequential stages, separating concurrent tasks.
@@ -129,50 +147,29 @@ FlowWeaver compiles visual pipelines prior to running them:
 
 The SDK separates the platform backend from individual node logic:
 
-- **CLI Tool** (`cli.py`): Bundles a `flowweaver create-plugin <name>` scaffolding tool. It generates fully structured, boilerplate plugin packages containing `plugin.yaml` manifests, `requirements.txt`, and sample node code.
+- **CLI Tool** (`cli.py`): Bundles scaffolding commands:
+  - `flowweaver create-plugin <name>` — Scaffolds plugin manifests.
+  - `flowweaver create-node <name> --category <cat>` — Generates customized templates for Loader, Filter, Transform, Exporter, and AI nodes, seeding sample datasets (`data/sample.csv`/`data/sample.json`) automatically.
 - **Dataset Abstraction** (`dataset.py`): Exposes multiple underlying engines wrapper implementations:
   - `TabularDataset`: Memory list of row dictionaries.
   - `PolarsDataset`: Wraps Polars DataFrame for highly optimized native parallel query operations.
   - `ArrowDataset`: Wraps PyArrow table representing zero-copy columns.
   - `StreamingDataset`: Generator-based row/chunk batch iterator supporting large files (GBs/TBs) with low, constant RAM overhead.
 - **Base Node Class** (`node.py`): Defines developer interface models `Node`, `Port`, and `Parameter` utilizing Pydantic constraints.
-- **Execution Context** (`context.py`): Wraps runtime services inside `ExecutionContext` including `Logger` tracking logs, and `Metrics` (automatically calculating execution duration milliseconds).
+- **Execution Context** (`context.py`): Wraps runtime services inside `ExecutionContext` including `Logger` tracking logs, `Metrics` tracking elapsed time, `report_progress(percent, msg)` progress updates, and `is_cancelled()` abort hooks.
 - **Artifact System** (`artifact.py`): Declares structural models representing execution assets (datasets, files, or custom JSON structures).
 
 ---
 
-## 8. Enterprise Debugger & Profiler
+## 8. Enterprise Debugger, Profiler & Quality Features
 
-FlowWeaver implements full debugger breakpoint pauses and resource execution profiling:
+FlowWeaver implements full debugger breakpoint pauses, telemetry logs, and resource execution profiling:
 
 - **Debugger Breakpoint Pauses** (`runner.py` / `executions.py`): If a node contains `__breakpoint__ = True` (or execution status is paused), the background execution thread blocks using a `threading.Event` primitive. Rest routes `/api/executions/{id}/resume` and `/api/executions/{id}/pause` trigger waker signals.
-- **Task Profiler Metrics** (`runner.py`): Computes precise task execution performance profiles:
-  - Timing: tracks precise elapsed execution duration in milliseconds.
-  - Memory: queries resident memory set sizes (RSS) maxrss utilizing Linux `resource` headers to calculate peak RAM allocation bytes.
-  - Throughput: calculates rows processed per second dynamically from dataset row counts.
-  - Preview payloads and metrics are emitted inside the `NODE_UPDATE` WebSocket frames to be mapped by the React client.
-
----
-
-## 9. Declarative Node SDK
-
-FlowWeaver nodes are fully self-describing. The SDK provides:
-
-- **@node decorator** (`node.py`): Configures a Node class with metadata. Auto-infers id from class name (CamelCase → snake_case), label, category color, and description from docstring.
-- **Input/Output descriptors**: `Input.tabular()`, `Input.text()`, `Output.any()`, etc. — declared as class attributes, auto-collected by the NodeMeta metaclass into ports.
-- **Param descriptors**: 13 rich parameter types that auto-generate frontend UI: `text`, `textarea`, `number`, `slider`, `boolean`, `select`, `color`, `file`, `regex`, `column`, `secret`, `json`, `expression`.
-- **Lifecycle methods**: `execute()` (required), `preview()` (optional lightweight UI preview), `validate()` (optional parameter validation).
-- **NodeMeta metaclass**: Introspects class attributes at import time to build ports and parameter schemas. Zero boilerplate.
-- **Auto-discovery** (`registry.py`): On boot, the registry scans `app/engine/nodes/` for all Node subclasses and registers them automatically. Zero manual `registry.register()` calls.
-- **Backward compatible**: Old-style nodes with manual `inputs=[]`, `outputs=[]`, `params_schema=[]` still work.
-
----
-
-## 10. Developer CLI
-
-The CLI (`packages/flowweaver_sdk/flowweaver/sdk/cli.py`) provides:
-- `flowweaver create-plugin <name>` — Scaffolds a full plugin package.
-- `flowweaver create-node <name> --category <cat>` — Scaffolds a single node with tests/examples using the declarative SDK.
-- `flowweaver test-node <path>` — Runs a node against its example fixtures.
-- `flowweaver lint-node <path>` — Validates node metadata completeness.
-- `flowweaver package-plugin <path>` — Builds a distributable tar.gz archive with manifest.
+- **Actionable Error Formatting**: Catches and overrides stack traces with descriptive diagnostic cards:
+  - Column missing (`KeyError`): lists available columns and suggests action.
+  - Path missing (`FileNotFoundError`): indicates wrong paths.
+  - Regex violations: captures compilation issues.
+- **Throughput Logs**: Emits stage counts in websocket streams indicating row changes (e.g. `Deduplicated/Filtered: Removed 12,000 rows (8,000 rows remaining)`).
+- **Task Profiler Metrics** (`runner.py`): Computes precise task execution performance profiles (timing ms, Peak RAM RSS memory allocation bytes, and rows/second throughput).
+- **Tabular Previews**: Emits previews containing top 5 sample rows, totals, and column types (`schema: { col: type }`).

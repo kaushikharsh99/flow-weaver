@@ -1,6 +1,6 @@
 # Steps Completed Log
 
-This document records the exact milestones, phases, and files implemented during the FlowWeaver foundational refactoring session.
+This document records the exact milestones, phases, and files implemented during the FlowWeaver foundatonal refactoring sessions.
 
 ---
 
@@ -12,7 +12,7 @@ This document records the exact milestones, phases, and files implemented during
 - **PIPELINE_FORMAT.md**: Finalized the `v1.0.0` JSON schema contract specifying nodes, edges, viewport, settings, and variables mapping.
 - **NODE_SPEC.md**: Defined universal node lifecycle states and the execution context signature.
 - **API_CONTRACT.md**: Outlined all 38 REST endpoints and websocket events.
-- **ROADMAP.md**: Outlined a 4-milestone execution timeline (MVP → Alpha → Beta → v1.0).
+- **ROADMAP.md**: Outlined a 9-phase execution timeline (Freeze Foundation → Dynamic Node SDK → Quality → Node Collection → Templates → Documentation → Team Scaling → Polish → Alpha).
 
 ### Phase 1 — Lock the Frontend
 - Extracted all magic styling parameters, comment dimensions, grid sizes, and execution bounds into `constants.ts`.
@@ -77,24 +77,42 @@ This document records the exact milestones, phases, and files implemented during
 - Added client interface signatures (`types.ts`, `client.ts`, `http-client.ts`, `mock-client.ts`) representing paused states, pause actions, and resume actions.
 - Integrated runtime performance profiling inside `runner.py` calculating task elapsed durations (ms), Peak RAM memory allocations (bytes) utilizing Linux `resource` self RSS headers, and rows/second throughput.
 
-### Developer Lifecycle Control Suite
-- Formulated modular control scripts inside the `scripts/` directory:
-  - `install.py`: Onboarding setup installer configuring virtual environment packages, npm workspace installs, env bindings, and SQLite schema creation.
-  - `run.py`: Concurrently launches FastAPI API server and Vite React client.
-  - `doctor.py`: Runs environment check diagnostics verifying port availability, package imports, database state, Node.js and Python levels.
-  - `test.py`: Smoke testing suite running DAG compilation validation and frontend tsc check compiles.
-  - `clean.py`: Clean compiler pycaches, pytest targets, and build outputs.
-- Rewrote root `run.py` to forward directly to `scripts/run.py`.
-- Configured gitignores to safely untrack and ignore setuptools egg-info folders.
+---
 
-### Node Developer Experience (NDX Milestone)
-- Redesigned the SDK Node base class with a `NodeMeta` metaclass for auto-introspection of port and parameter descriptors.
-- Added `@node` decorator for zero-boilerplate node definitions that auto-infer id, label, category color, and description.
-- Added `Input`/`Output` port descriptor factories (`Input.text()`, `Output.tabular()`, etc.).
-- Added `Param` descriptor factory with 13 rich parameter types: text, textarea, number, slider, boolean, select, color, file, regex, column, secret, json, expression.
-- Added `preview()` and `validate()` lifecycle methods to the Node base class.
-- Converted the registry from manual `registry.register()` calls to auto-discovery scanning of the `nodes/` directory.
-- Converted all 22 FallbackNode stub entries into proper self-describing `@node` classes in `stubs.py`.
-- Expanded the frontend `ParamField` type union and `Inspector.tsx` `Field` component to auto-render all 13 parameter types from backend metadata.
-- Expanded the CLI with `create-node`, `test-node`, `lint-node`, and `package-plugin` commands.
-- All 26 nodes auto-discovered with zero manual registration. Full backward compatibility preserved.
+## Session Refactoring Milestones (Phases 2-8 Complete)
+
+### Node Boilerplate Category Scaffolding
+- Added category-specific scaffolding inside the `flowweaver create-node` CLI parser, generating boilderplate templates tailored to `Loader`, `Filter`, `Transform`, `Exporter`, and `AI` node categories.
+- Added automatic CSV and JSON mock dataset seeding (`data/sample.csv` and `data/sample.json`) on node creation to guarantee unit tests pass immediately out-of-the-box.
+- Implemented pre-packaging constraints verifying style, lines limits, and sandbox imports inside the CLI `package_plugin` flow before archiving code.
+
+### Robust Quality Framework
+- Created custom `format_execution_error` context card mappings replacing raw tracebacks for Missing Columns (`KeyError` with column suggestions), Missing Files (`FileNotFoundError`), and Invalid Regex.
+- Added pretty execution summaries logging stage row transformations (retained/removed counts).
+- Connected progress hooks (`report_progress(percent, msg)`) and cancellation check triggers (`is_cancelled()`) inside SDK context.
+- Populated advanced edge previews resolving tabular statistics (row counts, sizes) and column type schemas (`schema: { col: type }`).
+
+### Production-Ready Node Library (20 Nodes)
+- Built a reusable computational algorithms library `app/engine/nodes/core_logic.py` containing pure-python logic.
+- Implemented 20 concrete built-in nodes:
+  - *Loaders:* Load CSV, Load JSON, Load JSONL, Load Parquet (via Polars), Hugging Face Dataset.
+  - *Cleaning:* Lowercase, Strip HTML, Remove Empty, Unicode Normalize, Regex Replace.
+  - *Filters:* Filter Rows (Generic operator), Length Filter, Language Filter, Deduplicate Records.
+  - *Transform:* Tokenize Text (Word/Sentence), Text Chunking (sliding window), Rename Columns.
+  - *Export:* Write CSV, Write JSON Lines, Write Parquet, Upload HuggingFace.
+- Removed duplicate overlaps in `stubs.py` keeping remainders isolated.
+- Overhauled deduplication to support **SimHash** locality-sensitive fingerprints, **MinHash** Jaccard set permutations, and xxHash/SHA256 digests.
+
+### Pre-Seeded Templates & Dynamic Selection
+- Created `app/seed.py` seeding **6 default pipeline templates** on database boot.
+- Positioned templates nodes on canvas coordinate grids for elegant layouts.
+- Linked frontend Command Palette to load seeded templates dynamically via the templates API, clearing pipeline IDs to avoid editing original templates.
+
+### Unified Sandboxes & Onboarding Quality Gates
+- Created Dockerfiles for frontend (`apps/web`) and backend (`apps/api`) workspaces alongside root `docker-compose.yml` to launch sandbox containers out-of-the-box.
+- Developed onboarding quality gate script `scripts/pre-commit-gate.py` that validates all compiler tests, frontend typechecks, and plugin lint checks before pushes.
+
+### Visual & Premium Polish
+- Added empty-state guidance card overlays in the infinite canvas wrapper.
+- Refactored visual toolbar buttons to spring-motion elements with hover/click scaling effects.
+- Cleaned up leftover branding (Flowline, Lovable) and removed `.lovable` project files.
