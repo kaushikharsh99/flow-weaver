@@ -1,13 +1,22 @@
 import time
 import datetime
-from typing import Dict, Any, List, Set
+import asyncio
+from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from app import models
+
+# Import base node executor interface and fallback definition
 from app.engine.base import BaseNode, ExecutionContext
 from app.engine.nodes.loaders import LoadCSVNode, LoadJSONNode
 from app.engine.nodes.filters import FilterRowsNode
 from app.engine.nodes.exports import WriteCSVNode
 from app.engine.nodes.fallback import FallbackNode
+
+# Import compiler pipeline modules
+from app.engine.compiler.validator import validate_pipeline
+from app.engine.compiler.builder import build_tasks
+from app.engine.compiler.optimizer import optimize_tasks
+from app.engine.compiler.planner import generate_plan
 
 def get_node_executor(type_id: str) -> BaseNode:
     """Factory to return executor instance for a given type_id."""
@@ -22,39 +31,8 @@ def get_node_executor(type_id: str) -> BaseNode:
     else:
         return FallbackNode(type_id)
 
-def topological_sort(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[str]:
-    """Perform Kahn's algorithm topological sort on the graph."""
-    indegree = {n["id"]: 0 for n in nodes}
-    adjacency = {n["id"]: [] for n in nodes}
-    
-    for edge in edges:
-        src = edge["source"]
-        tgt = edge["target"]
-        if src in adjacency and tgt in indegree:
-            adjacency[src].append(tgt)
-            indegree[tgt] += 1
-            
-    # Find all nodes with 0 incoming edges
-    queue = [node_id for node_id, degree in indegree.items() if degree == 0]
-    sorted_order = []
-    
-    while queue:
-        curr = queue.pop(0)
-        sorted_order.append(curr)
-        for neighbor in adjacency[curr]:
-            indegree[neighbor] -= 1
-            if indegree[neighbor] == 0:
-                queue.append(neighbor)
-                
-    if len(sorted_order) != len(nodes):
-        raise ValueError("Pipeline contains cycles (Directed loops are not allowed).")
-        
-    return sorted_order
-
 def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) -> None:
-    """Sequential execution of a pipeline DAG."""
-    import asyncio
-    
+    """Sequential execution of a compiled pipeline execution plan."""
     db = db_session
     execution = db.query(models.Execution).filter(models.Execution.id == execution_id).first()
     if not execution:
@@ -66,7 +44,7 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
         db.commit()
         return
 
-    # Helper to send dynamic ws alerts if server manager exists
+    # Helper to send live WS events
     async def send_ws(event: Dict[str, Any]):
         if ws_manager:
             await ws_manager.send_event(execution_id, event)
@@ -75,11 +53,6 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
     nodes = pipeline.nodes or []
     edges = pipeline.edges or []
     variables = pipeline.variables or {}
-    
-    # Exclude disabled and comment nodes from execution DAG
-    active_nodes = [n for n in nodes if n.get("type") != "commentNode" and not n.get("data", {}).get("disabled", False)]
-    active_node_ids = {n["id"] for n in active_nodes}
-    active_edges = [e for e in edges if e["source"] in active_node_ids and e["target"] in active_node_ids]
     
     execution.status = "running"
     db.commit()
@@ -94,99 +67,180 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
     outputs_store: Dict[str, Dict[str, Any]] = {}
     
     try:
-        order = topological_sort(active_nodes, active_edges)
-        node_map = {n["id"]: n for n in active_nodes}
-        total_steps = len(order)
+        # Prepare compilation context dictionary
+        pipeline_dict = {
+            "id": pipeline.id,
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
+            "settings": pipeline.settings or {}
+        }
         
-        for idx, node_id in enumerate(order):
-            # Check for cancellation
-            db.refresh(execution)
-            if execution.status == "cancelled":
+        # 1. Compile Pipeline Stage: Semantic Validation
+        loop.run_until_complete(send_ws({
+            "type": "LOG",
+            "level": "info",
+            "message": "Starting compiler validation checks..."
+        }))
+        val_res = validate_pipeline(pipeline_dict)
+        if not val_res.valid:
+            err_msg = next((iss.message for iss in val_res.issues if iss.level == "error"), "Validation failed")
+            raise ValueError(f"Compiler Validation Error: {err_msg}")
+            
+        # Write warnings if any
+        for issue in val_res.issues:
+            if issue.level == "warning":
                 loop.run_until_complete(send_ws({
                     "type": "LOG",
                     "level": "warn",
-                    "nodeId": node_id,
-                    "message": "Execution cancelled by user. Terminating process."
+                    "nodeId": issue.node_id,
+                    "message": issue.message
                 }))
-                return
-                
-            node = node_map[node_id]
-            node_data = node.get("data", {})
-            type_id = node_data.get("typeId", "")
-            title = node_data.get("title", type_id)
-            params = node_data.get("params", {})
-            
-            loop.run_until_complete(send_ws({
-                "type": "NODE_UPDATE",
-                "nodeId": node_id,
-                "status": "running",
-                "progress": int((idx / total_steps) * 100)
-            }))
-            
+
+        # 2. Compile Pipeline Stage: Graph Building
+        loop.run_until_complete(send_ws({
+            "type": "LOG",
+            "level": "info",
+            "message": "Building logical execution DAG..."
+        }))
+        tasks = build_tasks(pipeline_dict)
+        
+        # 3. Compile Pipeline Stage: Graph Optimization
+        loop.run_until_complete(send_ws({
+            "type": "LOG",
+            "level": "info",
+            "message": "Running graph optimizations..."
+        }))
+        optimized_tasks = optimize_tasks(tasks, pipeline_dict)
+        
+        # 4. Compile Pipeline Stage: Execution Planning & Scheduling
+        loop.run_until_complete(send_ws({
+            "type": "LOG",
+            "level": "info",
+            "message": "Generating concurrent execution scheduler plan..."
+        }))
+        plan = generate_plan(optimized_tasks, pipeline_dict)
+        
+        # Count total active tasks for progress tracking
+        total_tasks = sum(len(stage) for stage in plan.stages)
+        tasks_completed = 0
+        
+        loop.run_until_complete(send_ws({
+            "type": "LOG",
+            "level": "info",
+            "message": f"Compiled execution plan generated successfully. Found {len(plan.stages)} stage(s) with {total_tasks} task(s)."
+        }))
+
+        # 5. Core Execution Loop: Execute Stage by Stage
+        for stage_idx, stage in enumerate(plan.stages):
             loop.run_until_complete(send_ws({
                 "type": "LOG",
                 "level": "info",
-                "nodeId": node_id,
-                "message": f"Running node '{title}' [{type_id}]"
+                "message": f"Starting execution stage {stage_idx + 1}/{len(plan.stages)} ({len(stage)} task(s))"
             }))
             
-            # Gathers inputs from upstream connected edges
-            inputs = {}
-            for edge in active_edges:
-                if edge["target"] == node_id:
-                    src_node = edge["source"]
-                    src_port = edge["sourceHandle"]
-                    target_port = edge["targetHandle"]
-                    
+            # Note: For now, we execute tasks within a stage sequentially to satisfy Milestone 1.
+            # In Phase 3/Milestone 3, we will spin off these tasks into parallel threads/workers.
+            for task in stage:
+                node_id = task.id
+                
+                # Check for user cancellation
+                db.refresh(execution)
+                if execution.status == "cancelled":
+                    loop.run_until_complete(send_ws({
+                        "type": "LOG",
+                        "level": "warn",
+                        "nodeId": node_id,
+                        "message": "Execution cancelled by user. Terminating plan execution."
+                    }))
+                    return
+                
+                type_id = task.type_id
+                params = task.parameters
+                title = node_id  # default title fallback
+                
+                # Fetch node title from original config if available
+                orig_node = next((n for n in nodes if n.get("id") == node_id), None)
+                if orig_node:
+                    title = orig_node.get("data", {}).get("title", type_id)
+
+                loop.run_until_complete(send_ws({
+                    "type": "NODE_UPDATE",
+                    "nodeId": node_id,
+                    "status": "running",
+                    "progress": int((tasks_completed / total_tasks) * 100)
+                }))
+
+                loop.run_until_complete(send_ws({
+                    "type": "LOG",
+                    "level": "info",
+                    "nodeId": node_id,
+                    "message": f"Running node: '{title}' [{type_id}]"
+                }))
+
+                # Gather connections mapped by inputs
+                inputs = {}
+                for tgt_port, src_info in task.inputs.items():
+                    src_node = src_info["source_node"]
+                    src_port = src_info["source_port"]
                     if src_node in outputs_store and src_port in outputs_store[src_node]:
-                        inputs[target_port] = outputs_store[src_node][src_port]
-            
-            # Execute node logic
-            executor = get_node_executor(type_id)
-            ctx = ExecutionContext(variables, params, inputs)
-            
-            try:
-                start_time = time.perf_counter()
-                outputs = executor.execute(ctx)
-                end_time = time.perf_counter()
-                
-                # Store output results
-                outputs_store[node_id] = outputs
-                
-                # Write logs to ws stream
-                for log_msg in ctx.logs:
+                        inputs[tgt_port] = outputs_store[src_node][src_port]
+
+                # Check if task output is cached
+                if task.is_cached:
                     loop.run_until_complete(send_ws({
                         "type": "LOG",
                         "level": "info",
                         "nodeId": node_id,
-                        "message": log_msg
+                        "message": "Reusing cached checkpoint output for node."
                     }))
+                    # Mock cached retrieval (in production, loaded from SQLite / File System cache index)
+                    outputs = {"out": "Cached Checkpoint Value"}
+                else:
+                    executor = get_node_executor(type_id)
+                    ctx = ExecutionContext(variables, params, inputs)
                     
-                duration = round((end_time - start_time) * 1000)
+                    try:
+                        start_time = time.perf_counter()
+                        outputs = executor.execute(ctx)
+                        end_time = time.perf_counter()
+                        
+                        # Emit logged entries from this task execution
+                        for log_msg in ctx.logs:
+                            loop.run_until_complete(send_ws({
+                                "type": "LOG",
+                                "level": "info",
+                                "nodeId": node_id,
+                                "message": log_msg
+                            }))
+                            
+                    except Exception as node_err:
+                        loop.run_until_complete(send_ws({
+                            "type": "LOG",
+                            "level": "error",
+                            "nodeId": node_id,
+                            "message": f"Execution failed on node '{title}': {str(node_err)}"
+                        }))
+                        loop.run_until_complete(send_ws({
+                            "type": "NODE_UPDATE",
+                            "nodeId": node_id,
+                            "status": "error"
+                        }))
+                        raise node_err
+                
+                # Cache output data results
+                outputs_store[node_id] = outputs
+                tasks_completed += 1
+
                 loop.run_until_complete(send_ws({
                     "type": "NODE_UPDATE",
                     "nodeId": node_id,
                     "status": "success",
-                    "progress": int(((idx + 1) / total_steps) * 100),
-                    # Provide a generic payload preview if applicable
+                    "progress": int((tasks_completed / total_tasks) * 100),
                     "preview": outputs.get("out") if isinstance(outputs.get("out"), dict) else None
                 }))
-                
-            except Exception as node_err:
-                loop.run_until_complete(send_ws({
-                    "type": "LOG",
-                    "level": "error",
-                    "nodeId": node_id,
-                    "message": f"Execution failed on node '{title}': {str(node_err)}"
-                }))
-                loop.run_until_complete(send_ws({
-                    "type": "NODE_UPDATE",
-                    "nodeId": node_id,
-                    "status": "error"
-                }))
-                raise node_err
-                
-        # Completed successfully
+
+        # Completed all stages successfully
         execution.status = "completed"
         execution.progress = 100
         execution.completed_at = datetime.datetime.utcnow()
