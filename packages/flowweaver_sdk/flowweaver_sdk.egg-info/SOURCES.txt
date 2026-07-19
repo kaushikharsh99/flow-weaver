@@ -1,0 +1,5 @@
+setup.py
+flowweaver_sdk.egg-info/PKG-INFO
+flowweaver_sdk.egg-info/SOURCES.txt
+flowweaver_sdk.egg-info/dependency_links.txt
+flowweaver_sdk.egg-info/top_level.txt

@@ -1,26 +1,27 @@
 import time
 import random
 from typing import Dict, Any
-from app.engine.base import BaseNode, ExecutionContext
+from flowweaver.sdk import Node, ExecutionContext, TabularDataset
 
-class FallbackNode(BaseNode):
+class FallbackNode(Node):
     def __init__(self, node_type_id: str):
         self.node_type_id = node_type_id
+        self.id = node_type_id
 
-    def execute(self, ctx: ExecutionContext) -> Dict[str, Any]:
-        ctx.log(f"Executing fallback simulated handler for node type '{self.node_type_id}'")
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        ctx.log(f"Executing fallback handler for dynamic node type '{self.node_type_id}'")
         
         # Simulate delay
-        delay = 0.3 + random.random() * 0.6
+        delay = 0.2 + random.random() * 0.4
         time.sleep(delay)
         
-        # Provide some dummy outputs based on node type
-        outputs = {}
-        if self.node_type_id == "sentiment":
-            outputs["out"] = {"sentiment": "positive", "confidence": 0.94}
-        elif self.node_type_id == "tokenize":
-            outputs["out"] = ["simulated", "tokenized", "output"]
-        else:
-            outputs["out"] = ctx.inputs.get("in", "Simulated Output")
+        # Provide some dummy outputs
+        out_val = inputs.get("in", "Simulated Output")
+        
+        # Wrap string/list in TabularDataset if appropriate
+        if isinstance(out_val, str):
+            out_val = TabularDataset([{"text": out_val}], columns=["text"])
+        elif isinstance(out_val, list):
+            out_val = TabularDataset([{"item": x} for x in out_val], columns=["item"])
             
-        return outputs
+        return {"out": out_val}

@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: flowweaver-sdk
+Version: 0.1.0
+Summary: Core developer SDK for writing FlowWeaver nodes and plugins
+Author: FlowWeaver Team
+Requires-Python: >=3.8
+Dynamic: author
+Dynamic: requires-python
+Dynamic: summary

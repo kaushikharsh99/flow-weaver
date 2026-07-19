@@ -5,31 +5,15 @@ from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from app import models
 
-# Import base node executor interface and fallback definition
-from app.engine.base import BaseNode, ExecutionContext
-from app.engine.nodes.loaders import LoadCSVNode, LoadJSONNode
-from app.engine.nodes.filters import FilterRowsNode
-from app.engine.nodes.exports import WriteCSVNode
-from app.engine.nodes.fallback import FallbackNode
+# Import Core SDK packages
+from flowweaver.sdk import Node, Dataset, ExecutionContext
 
 # Import compiler pipeline modules
 from app.engine.compiler.validator import validate_pipeline
 from app.engine.compiler.builder import build_tasks
 from app.engine.compiler.optimizer import optimize_tasks
 from app.engine.compiler.planner import generate_plan
-
-def get_node_executor(type_id: str) -> BaseNode:
-    """Factory to return executor instance for a given type_id."""
-    if type_id == "load_csv":
-        return LoadCSVNode()
-    elif type_id == "load_json":
-        return LoadJSONNode()
-    elif type_id == "filter_rows":
-        return FilterRowsNode()
-    elif type_id == "write_csv":
-        return WriteCSVNode()
-    else:
-        return FallbackNode(type_id)
+from app.engine.registry import registry
 
 def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) -> None:
     """Sequential execution of a compiled pipeline execution plan."""
@@ -44,12 +28,11 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
         db.commit()
         return
 
-    # Helper to send live WS events
+    # Helper to send WS events
     async def send_ws(event: Dict[str, Any]):
         if ws_manager:
             await ws_manager.send_event(execution_id, event)
             
-    # Gather nodes and edges
     nodes = pipeline.nodes or []
     edges = pipeline.edges or []
     variables = pipeline.variables or {}
@@ -63,11 +46,11 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     }))
     
-    # Store outputs of intermediate nodes: maps node_id -> { port_id -> value }
+    # Gathers execution outputs mapping: node_id -> { port_id -> value }
+    # Now, values inside port dictionary are Dataset wrappers!
     outputs_store: Dict[str, Dict[str, Any]] = {}
     
     try:
-        # Prepare compilation context dictionary
         pipeline_dict = {
             "id": pipeline.id,
             "nodes": nodes,
@@ -76,62 +59,36 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
             "settings": pipeline.settings or {}
         }
         
-        # 1. Compile Pipeline Stage: Semantic Validation
-        loop.run_until_complete(send_ws({
-            "type": "LOG",
-            "level": "info",
-            "message": "Starting compiler validation checks..."
-        }))
+        # 1. Compile stages
+        loop.run_until_complete(send_ws({"type": "LOG", "level": "info", "message": "Starting compiler validation checks..."}))
         val_res = validate_pipeline(pipeline_dict)
         if not val_res.valid:
             err_msg = next((iss.message for iss in val_res.issues if iss.level == "error"), "Validation failed")
             raise ValueError(f"Compiler Validation Error: {err_msg}")
             
-        # Write warnings if any
         for issue in val_res.issues:
             if issue.level == "warning":
-                loop.run_until_complete(send_ws({
-                    "type": "LOG",
-                    "level": "warn",
-                    "nodeId": issue.node_id,
-                    "message": issue.message
-                }))
+                loop.run_until_complete(send_ws({"type": "LOG", "level": "warn", "nodeId": issue.node_id, "message": issue.message}))
 
-        # 2. Compile Pipeline Stage: Graph Building
-        loop.run_until_complete(send_ws({
-            "type": "LOG",
-            "level": "info",
-            "message": "Building logical execution DAG..."
-        }))
+        loop.run_until_complete(send_ws({"type": "LOG", "level": "info", "message": "Building logical execution DAG..."}))
         tasks = build_tasks(pipeline_dict)
         
-        # 3. Compile Pipeline Stage: Graph Optimization
-        loop.run_until_complete(send_ws({
-            "type": "LOG",
-            "level": "info",
-            "message": "Running graph optimizations..."
-        }))
+        loop.run_until_complete(send_ws({"type": "LOG", "level": "info", "message": "Running graph optimizations..."}))
         optimized_tasks = optimize_tasks(tasks, pipeline_dict)
         
-        # 4. Compile Pipeline Stage: Execution Planning & Scheduling
-        loop.run_until_complete(send_ws({
-            "type": "LOG",
-            "level": "info",
-            "message": "Generating concurrent execution scheduler plan..."
-        }))
+        loop.run_until_complete(send_ws({"type": "LOG", "level": "info", "message": "Generating concurrent execution scheduler plan..."}))
         plan = generate_plan(optimized_tasks, pipeline_dict)
         
-        # Count total active tasks for progress tracking
         total_tasks = sum(len(stage) for stage in plan.stages)
         tasks_completed = 0
         
         loop.run_until_complete(send_ws({
-            "type": "LOG",
-            "level": "info",
-            "message": f"Compiled execution plan generated successfully. Found {len(plan.stages)} stage(s) with {total_tasks} task(s)."
+            "type": "LOG", 
+            "level": "info", 
+            "message": f"Execution plan generated. Total stages: {len(plan.stages)}, Total tasks: {total_tasks}."
         }))
 
-        # 5. Core Execution Loop: Execute Stage by Stage
+        # 2. Execute plan
         for stage_idx, stage in enumerate(plan.stages):
             loop.run_until_complete(send_ws({
                 "type": "LOG",
@@ -139,12 +96,9 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                 "message": f"Starting execution stage {stage_idx + 1}/{len(plan.stages)} ({len(stage)} task(s))"
             }))
             
-            # Note: For now, we execute tasks within a stage sequentially to satisfy Milestone 1.
-            # In Phase 3/Milestone 3, we will spin off these tasks into parallel threads/workers.
             for task in stage:
                 node_id = task.id
                 
-                # Check for user cancellation
                 db.refresh(execution)
                 if execution.status == "cancelled":
                     loop.run_until_complete(send_ws({
@@ -157,9 +111,8 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                 
                 type_id = task.type_id
                 params = task.parameters
-                title = node_id  # default title fallback
+                title = node_id
                 
-                # Fetch node title from original config if available
                 orig_node = next((n for n in nodes if n.get("id") == node_id), None)
                 if orig_node:
                     title = orig_node.get("data", {}).get("title", type_id)
@@ -175,10 +128,10 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                     "type": "LOG",
                     "level": "info",
                     "nodeId": node_id,
-                    "message": f"Running node: '{title}' [{type_id}]"
+                    "message": f"Running task '{title}' [{type_id}]"
                 }))
 
-                # Gather connections mapped by inputs
+                # Gather inputs from upstream outputs
                 inputs = {}
                 for tgt_port, src_info in task.inputs.items():
                     src_node = src_info["source_node"]
@@ -186,7 +139,7 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                     if src_node in outputs_store and src_port in outputs_store[src_node]:
                         inputs[tgt_port] = outputs_store[src_node][src_port]
 
-                # Check if task output is cached
+                # Check cache checkpoint optimization
                 if task.is_cached:
                     loop.run_until_complete(send_ws({
                         "type": "LOG",
@@ -194,24 +147,28 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                         "nodeId": node_id,
                         "message": "Reusing cached checkpoint output for node."
                     }))
-                    # Mock cached retrieval (in production, loaded from SQLite / File System cache index)
-                    outputs = {"out": "Cached Checkpoint Value"}
+                    # Default mock caching
+                    from flowweaver.sdk import TabularDataset
+                    outputs = {"out": TabularDataset([{"cached": True}], columns=["cached"])}
                 else:
-                    executor = get_node_executor(type_id)
-                    ctx = ExecutionContext(variables, params, inputs)
+                    executor = registry.get(type_id)
+                    if not executor:
+                        raise ValueError(f"No node executor found in registry for type: {type_id}")
+                        
+                    ctx = ExecutionContext(variables, params)
                     
                     try:
                         start_time = time.perf_counter()
-                        outputs = executor.execute(ctx)
+                        outputs = executor.execute(inputs, ctx)
                         end_time = time.perf_counter()
                         
-                        # Emit logged entries from this task execution
-                        for log_msg in ctx.logs:
+                        # Emit logged metrics and trace logs
+                        for log_entry in ctx.logger.logs:
                             loop.run_until_complete(send_ws({
                                 "type": "LOG",
                                 "level": "info",
                                 "nodeId": node_id,
-                                "message": log_msg
+                                "message": log_entry
                             }))
                             
                     except Exception as node_err:
@@ -232,12 +189,26 @@ def execute_pipeline(execution_id: str, db_session: Session, ws_manager=None) ->
                 outputs_store[node_id] = outputs
                 tasks_completed += 1
 
+                # Generate dynamic edge/node data preview from dataset abstraction!
+                out_val = outputs.get("out")
+                preview = None
+                if isinstance(out_val, Dataset):
+                    preview = {
+                        "kind": "tabular",
+                        "columns": out_val.columns(),
+                        "rows": out_val.to_list()[:5], # Send top 5 rows sample to frontend
+                        "stats": {
+                            "rowCount": out_val.row_count(),
+                            "columnCount": len(out_val.columns())
+                        }
+                    }
+
                 loop.run_until_complete(send_ws({
                     "type": "NODE_UPDATE",
                     "nodeId": node_id,
                     "status": "success",
                     "progress": int((tasks_completed / total_tasks) * 100),
-                    "preview": outputs.get("out") if isinstance(outputs.get("out"), dict) else None
+                    "preview": preview
                 }))
 
         # Completed all stages successfully
