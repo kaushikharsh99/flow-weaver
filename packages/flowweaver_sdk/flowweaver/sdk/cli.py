@@ -101,7 +101,7 @@ Register this plugin directory inside the FlowWeaver plugins directory, or deplo
 
 
 def create_node(name: str, category: str):
-    """Scaffolds a single node file with tests and examples."""
+    """Scaffolds a single capability plugin with Node adapter, Service, Core logic, tests, and benchmarks."""
     safe_name = name.lower().replace("-", "_").replace(" ", "_")
     base_path = os.path.join(os.getcwd(), name)
     
@@ -109,43 +109,120 @@ def create_node(name: str, category: str):
         print(f"Error: Directory '{name}' already exists.")
         sys.exit(1)
         
-    print(f"Creating node template at: {base_path}...")
-    os.makedirs(base_path, exist_ok=True)
-    os.makedirs(os.path.join(base_path, "tests"), exist_ok=True)
-    os.makedirs(os.path.join(base_path, "examples"), exist_ok=True)
+    print(f"Creating modular node template at: {base_path}...")
+    
+    # Create directory structure
+    dirs = [
+        "",
+        "core",
+        "utils",
+        "tests",
+        "examples",
+        "benchmarks"
+    ]
+    for d in dirs:
+        os.makedirs(os.path.join(base_path, d), exist_ok=True)
+        if d in ["core", "utils", "tests", "benchmarks"]:
+            with open(os.path.join(base_path, d, "__init__.py"), "w") as f:
+                f.write(f"# {d} package\n")
 
     if category == "Loader":
         inputs_str = ""
         outputs_str = "    out = Output.tabular()\n"
+        service_call = "return {'out': service.run(ctx)}"
     elif category == "Transform":
         inputs_str = "    in_data = Input.tabular()\n"
         outputs_str = "    out = Output.tabular()\n"
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
     elif category == "Filter":
         inputs_str = "    in_data = Input.tabular()\n"
         outputs_str = "    out = Output.tabular()\n"
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
     elif category == "Exporter":
         inputs_str = "    in_data = Input.any()\n"
         outputs_str = ""
+        service_call = "in_val = inputs.get('in_data')\n        service.run(in_val, ctx)\n        return {}"
     elif category == "AI":
         inputs_str = "    in_text = Input.text()\n"
         outputs_str = "    out = Output.text()\n"
+        service_call = "in_val = inputs.get('in_text')\n        return {'out': service.run(in_val, ctx)}"
     else:
         inputs_str = "    in_data = Input.any()\n"
         outputs_str = "    out = Output.any()\n"
+        service_call = "in_val = inputs.get('in_data')\n        return {'out': service.run(in_val, ctx)}"
 
     class_name = "".join(part.title() for part in safe_name.split("_")) + "Node"
+    service_name = "".join(part.title() for part in safe_name.split("_")) + "Service"
 
-    node_py = f"""from flowweaver.sdk import Node, Input, Output, Param, node
+    # 1. node.py (FlowWeaver Interface Adapter - under 200 lines)
+    node_py = f"""from typing import Dict, Any
+from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext
+from service import {service_name}
 
 @node(name="{name}", category="{category}")
 class {class_name}(Node):
+    \"\"\"{name} node adapter. Exposes FlowWeaver interface.
+    
+    All core computational logic resides in core/ and coordinates via service.py.
+    This file must remain under 200 lines and avoid direct OS, network, or DB calls.
+    \"\"\"
 {inputs_str}{outputs_str}
-    def execute(self, inputs, ctx):
-        pass
+    # Parameters
+    example_param = Param.text(label="Example Param", default="value", description="An example input param")
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        ctx.log("Delegating execution to Service layer.")
+        service = {service_name}()
+        {service_call}
 """
     with open(os.path.join(base_path, "node.py"), "w") as f:
         f.write(node_py.strip() + "\n")
 
+    # 2. service.py (Orchestrator)
+    service_py = f"""from flowweaver.sdk import ExecutionContext
+from core.algorithm import process_data
+from utils.helpers import log_info
+
+class {service_name}:
+    \"\"\"Service layer coordinating core algorithm logic and helper utilities.
+    Runs business logic without knowing about FlowWeaver Node internals.
+    \"\"\"
+    def run(self, *args, **kwargs):
+        ctx = args[-1] if args and isinstance(args[-1], ExecutionContext) else None
+        if ctx:
+            log_info(ctx, "Orchestrating logic inside Service layer.")
+        
+        # Extract inputs/parameters and delegate to core/
+        data = args[0] if len(args) > 1 else None
+        return process_data(data, ctx)
+"""
+    with open(os.path.join(base_path, "service.py"), "w") as f:
+        f.write(service_py.strip() + "\n")
+
+    # 3. core/algorithm.py (Core reusable computational package)
+    core_alg = f"""def process_data(data, ctx=None):
+    \"\"\"Core reusable algorithm. Pure Python logic.
+    Does not depend on any FlowWeaver nodes or adapters.
+    \"\"\"
+    if ctx:
+        param_val = ctx.parameters.get("example_param", "default")
+        ctx.log(f"Processing data in core algorithm with parameter: {{param_val}}")
+    
+    # Implement actual business logic / algorithms here
+    return data
+"""
+    with open(os.path.join(base_path, "core", "algorithm.py"), "w") as f:
+        f.write(core_alg.strip() + "\n")
+
+    # 4. utils/helpers.py (Helpers)
+    helpers_py = f"""def log_info(ctx, message: str):
+    \"\"\"Utility helper demonstrating context routing.\"\"\"
+    ctx.log(f"[Helper] {{message}}")
+"""
+    with open(os.path.join(base_path, "utils", "helpers.py"), "w") as f:
+        f.write(helpers_py.strip() + "\n")
+
+    # 5. plugin.yaml
     plugin_yaml = f"""id: {safe_name}
 name: {name}
 nodes:
@@ -154,31 +231,87 @@ nodes:
     with open(os.path.join(base_path, "plugin.yaml"), "w") as f:
         f.write(plugin_yaml.strip() + "\n")
 
-    readme_md = f"""# {name}
+    # 6. README.md
+    readme_md = f"""# {name} Capability Plugin
 
-Auto-generated documentation for {name} ({category}).
+Auto-generated FlowWeaver Capability Plugin for {name} ({category}).
+
+## Design Structure
+Following the FlowWeaver "Node as Adapter" architecture:
+- `node.py`: Adapts the capability to FlowWeaver (under 200 lines).
+- `service.py`: Orchestrates business logic coordination.
+- `core/`: Computational algorithms (independent reusable Python modules).
+- `utils/`: Help and auxiliary subroutines.
+- `tests/`: Separate node adapter, algorithm, and example regression tests.
 """
     with open(os.path.join(base_path, "README.md"), "w") as f:
         f.write(readme_md.strip() + "\n")
 
-    test_py = f"""import json
+    # 7. tests/
+    test_node_py = f"""import json
 import os
+from flowweaver.sdk import ExecutionContext
 from node import {class_name}
 
 def test_node_execute():
-    with open(os.path.join(os.path.dirname(__file__), '..', 'examples', 'basic.json')) as f:
-        params = json.load(f)
+    # Test the FlowWeaver Node Adapter interface
     n = {class_name}()
-    # assert True
+    assert n.category == "{category}"
 """
     with open(os.path.join(base_path, "tests", "test_node.py"), "w") as f:
-        f.write(test_py.strip() + "\n")
+        f.write(test_node_py.strip() + "\n")
 
+    test_alg_py = f"""from core.algorithm import process_data
+
+def test_algorithm_logic():
+    # Test the core pure-python computational logic directly
+    result = process_data("test_input")
+    assert result == "test_input"
+"""
+    with open(os.path.join(base_path, "tests", "test_algorithm.py"), "w") as f:
+        f.write(test_alg_py.strip() + "\n")
+
+    test_ex_py = f"""import json
+import os
+from node import {class_name}
+
+def test_examples():
+    example_file = os.path.join(os.path.dirname(__file__), '..', 'examples', 'basic.json')
+    assert os.path.exists(example_file)
+    with open(example_file) as f:
+        data = json.load(f)
+    assert "example_param" in data
+"""
+    with open(os.path.join(base_path, "tests", "test_examples.py"), "w") as f:
+        f.write(test_ex_py.strip() + "\n")
+
+    # 8. examples
     with open(os.path.join(base_path, "examples", "basic.json"), "w") as f:
         json.dump({"example_param": "value"}, f, indent=2)
         f.write("\n")
+    with open(os.path.join(base_path, "examples", "advanced.json"), "w") as f:
+        json.dump({"example_param": "advanced_value"}, f, indent=2)
+        f.write("\n")
 
-    print(f"Successfully generated node template '{name}'!")
+    # 9. benchmarks/benchmark.py
+    benchmark_py = f"""import time
+from core.algorithm import process_data
+
+def run_benchmark():
+    print("Running performance benchmark...")
+    start = time.time()
+    for _ in range(1000):
+        process_data("benchmark_data")
+    duration = time.time() - start
+    print(f"Completed 1000 runs in {{duration:.4f}}s")
+
+if __name__ == "__main__":
+    run_benchmark()
+"""
+    with open(os.path.join(base_path, "benchmarks", "benchmark.py"), "w") as f:
+        f.write(benchmark_py.strip() + "\n")
+
+    print(f"Successfully generated modular capability plugin '{name}'!")
 
 
 def _load_node_class(path: str):
@@ -226,11 +359,16 @@ def test_node(path: str):
         class MockCtx:
             def __init__(self, p):
                 self.parameters = p
+                self.variables = {}
             def log(self, msg):
-                pass
+                print(f"[LOG] {msg}")
         
         ctx = MockCtx(params)
-        instance.execute({}, ctx)
+        sys.path.insert(0, os.path.abspath(path))
+        try:
+            instance.execute({}, ctx)
+        finally:
+            sys.path.pop(0)
         print("PASS")
     except Exception as e:
         print(f"FAIL: {e}")
@@ -240,13 +378,33 @@ def test_node(path: str):
 def lint_node(path: str):
     print(f"Linting node at {path}...")
     
+    node_file = os.path.join(path, "node.py")
+    if not os.path.exists(node_file):
+        print(f"Error: node.py not found in {path}")
+        sys.exit(1)
+
     node_class = _load_node_class(path)
     if not node_class:
         print("Error: Could not find a Node subclass in node.py")
         sys.exit(1)
 
     has_error = False
-    
+
+    # Enforce line limit
+    with open(node_file, "r") as f:
+        lines = f.readlines()
+    if len(lines) > 200:
+        print(f"Error: node.py is too long ({len(lines)} lines). Keep it under 200 lines. Move logic to core/.")
+        has_error = True
+
+    # Enforce imports restrictions
+    forbidden = ["requests", "threading", "sqlite3", "logging", "urllib", "subprocess"]
+    for idx, line in enumerate(lines, 1):
+        for item in forbidden:
+            if f"import {item}" in line or f"from {item}" in line:
+                print(f"Error: node.py:L{idx} contains import of '{item}'. Use ExecutionContext services instead.")
+                has_error = True
+
     for attr in ["id", "label", "category", "description"]:
         if not hasattr(node_class, attr) or not getattr(node_class, attr):
             print(f"Error: Node is missing '{attr}'")
@@ -277,14 +435,78 @@ def lint_node(path: str):
     if not os.path.exists(examples_path) or not os.listdir(examples_path):
         print("Warning: Missing examples in examples/")
 
-    if not hasattr(node_class, "tags") or not getattr(node_class, "tags"):
-        print("Warning: Missing tags")
-
     if has_error:
         print("Linting failed with errors.")
         sys.exit(1)
     else:
         print("Linting passed.")
+
+
+def generate_docs(path: str):
+    """Automatically generates markdown documentation from node metadata."""
+    node_class = _load_node_class(path)
+    if not node_class:
+        print("Error: Could not load node class to generate docs.")
+        sys.exit(1)
+
+    node_id = getattr(node_class, "id", "unknown")
+    node_label = getattr(node_class, "label", "Unknown Node")
+    node_category = getattr(node_class, "category", "Custom")
+    node_desc = getattr(node_class, "description", "")
+    inputs = getattr(node_class, "inputs", [])
+    outputs = getattr(node_class, "outputs", [])
+    params = getattr(node_class, "params_schema", [])
+    docs_text = getattr(node_class, "documentation", "")
+
+    md = []
+    md.append(f"# Node Reference: {node_label}")
+    md.append(f"**ID**: `{node_id}`  |  **Category**: `{node_category}`")
+    md.append("")
+    md.append(f"## Description")
+    md.append(node_desc or "No description provided.")
+    md.append("")
+
+    md.append("## Interface Ports")
+    if inputs:
+        md.append("### Inputs")
+        for port in inputs:
+            req_str = " (Required)" if getattr(port, "required", False) else ""
+            md.append(f"- **{port.id}**: `{port.type}` — {port.label}{req_str}")
+    else:
+        md.append("- No input ports.")
+
+    md.append("")
+    if outputs:
+        md.append("### Outputs")
+        for port in outputs:
+            md.append(f"- **{port.id}**: `{port.type}` — {port.label}")
+    else:
+        md.append("- No output ports.")
+    md.append("")
+
+    md.append("## Configuration Parameters")
+    if params:
+        md.append("| Parameter Key | Label | Type | Default | Description |")
+        md.append("|---|---|---|---|---|")
+        for p in params:
+            desc = getattr(p, "description", "") or ""
+            default_val = getattr(p, "default", "")
+            if default_val is None:
+                default_val = "*None*"
+            md.append(f"| `{p.key}` | {p.label} | `{p.type}` | `{default_val}` | {desc} |")
+    else:
+        md.append("No configuration parameters.")
+    md.append("")
+
+    if docs_text:
+        md.append("## Additional Documentation")
+        md.append(docs_text)
+        md.append("")
+
+    output_file = os.path.join(path, "docs.md")
+    with open(output_file, "w") as f:
+        f.write("\n".join(md).strip() + "\n")
+    print(f"Documentation generated successfully at: {output_file}")
 
 
 def package_plugin(path: str):
@@ -323,15 +545,18 @@ def main():
     create_plugin_parser = subparsers.add_parser("create-plugin", help="Scaffold a new custom plugin template.")
     create_plugin_parser.add_argument("name", type=str, help="Name of the plugin directory to create.")
 
-    create_node_parser = subparsers.add_parser("create-node", help="Scaffolds a single node file with tests and examples.")
+    create_node_parser = subparsers.add_parser("create-node", help="Scaffolds a single node capability package with tests and examples.")
     create_node_parser.add_argument("name", type=str, help="Name of the node directory to create.")
     create_node_parser.add_argument("--category", type=str, required=True, choices=["Loader", "Transform", "Filter", "Exporter", "AI", "Custom"], help="Template category for the node.")
 
     test_parser = subparsers.add_parser("test-node", help="Runs a node against its example fixtures.")
     test_parser.add_argument("path", type=str, help="Path to the node directory.")
 
-    lint_parser = subparsers.add_parser("lint-node", help="Validates node metadata completeness.")
+    lint_parser = subparsers.add_parser("lint-node", help="Validates node metadata completeness and adapter architecture rules.")
     lint_parser.add_argument("path", type=str, help="Path to the node directory.")
+
+    doc_parser = subparsers.add_parser("generate-docs", help="Automatically generates markdown documentation for the node.")
+    doc_parser.add_argument("path", type=str, help="Path to the node directory.")
 
     package_parser = subparsers.add_parser("package-plugin", help="Builds a distributable archive.")
     package_parser.add_argument("path", type=str, help="Path to the plugin directory.")
@@ -346,6 +571,8 @@ def main():
         test_node(args.path)
     elif args.command == "lint-node":
         lint_node(args.path)
+    elif args.command == "generate-docs":
+        generate_docs(args.path)
     elif args.command == "package-plugin":
         package_plugin(args.path)
 
