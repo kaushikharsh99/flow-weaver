@@ -65,3 +65,8 @@ This document records the exact milestones, phases, and files implemented during
   - Developed `StreamingDataset` mapping iterator/generator record chunks supporting large-scale file processing (GB/TB scale) under constant, low RAM footprint.
 - Updated setup package configurations (`setup.py`) and virtual environment requirements (`requirements.txt`) to dynamically install and support `polars`, `pyarrow`, and `duckdb` binary wheels on Python 3.13.
 - Created and executed a comprehensive automated dataset test pipeline verifying zero-copy data conversions and generator iterators.
+
+### Milestone 4 — Developer Experience (CLI & Hot-Reload Loader)
+- Created CLI plugin creator script `packages/flowweaver_sdk/flowweaver/sdk/cli.py` and mapped the console command `flowweaver` inside `setup.py` entry points.
+- Implemented `load_local_plugins()` dynamic scan and loaders inside `registry.py` to load custom nodes dynamically from `plugins/` on startup.
+- Scaffolded sample plugin `text_utils` inside `plugins/` via CLI, and successfully verified dynamic loading of `text_utils_processor` in registry node lists.

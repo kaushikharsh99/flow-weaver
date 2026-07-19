@@ -22,7 +22,7 @@ flow-weaver/
 │   │   │   │   │   └── validator.py  # Run cycles & semantic safety checks
 │   │   │   │   ├── nodes/   # Individual Python Node Implementations
 │   │   │   │   ├── base.py
-│   │   │   │   ├── registry.py
+│   │   │   │   ├── registry.py  # Standard registry + local dynamic plugin loader
 │   │   │   │   └── runner.py
 │   │   │   ├── routes/      # REST API Routers & WS Channels
 │   │   │   ├── db.py        # SQLAlchemy context setup
@@ -51,11 +51,13 @@ flow-weaver/
 │       │   └── sdk/
 │       │       ├── __init__.py
 │       │       ├── artifact.py  # Artifact models
+│       │       ├── cli.py       # Plugin generator command parser
 │       │       ├── context.py   # ExecutionContext, Logger, Metrics
 │       │       ├── dataset.py   # Dataset, TabularDataset, PolarsDataset, ArrowDataset, StreamingDataset
 │       │       └── node.py      # Base Node, Port, Parameter definitions
 │       └── setup.py
-├── plugins/                 # Dynamic plugins/nodes (future)
+├── plugins/                 # Local dynamic plugins directory (scanned on boot)
+│   └── text_utils/          # Sample CLI-generated plugin
 ├── package.json             # Root monorepo workspace configuration
 ├── tsconfig.json            # Root tsconfig path mapping
 └── run.py                   # Dev server orchestrator script (handles venv/npm setups)
@@ -74,10 +76,11 @@ You can toggle the frontend client between mock (in-memory) state and real HTTP 
 
 ---
 
-## 3. Node Registry System
+## 3. Node Registry & Dynamic Plugin Loader
 
 The registry is the source of truth for available nodes, ports, and configuration options.
 - **Backend Registry** (`apps/api/app/engine/registry.py`): Implements `NodeRegistry` with 24 built-in nodes.
+- **Dynamic Plugin Scanning**: Upon server boot (`main.py`), the registry calls `.load_local_plugins("plugins")`. It scans folders under the `plugins/` directory, parses their `plugin.yaml` manifest, and dynamically imports declared custom node classes at runtime using `importlib`.
 - **Frontend Integration**: Node list and parameters are retrieved dynamically from the `/api/nodes` route. Icons are resolved dynamically in components (`Sidebar.tsx`, `Inspector.tsx`, `NodeViews.tsx`) using the `getIcon()` utility.
 
 ---
@@ -114,6 +117,7 @@ FlowWeaver compiles visual pipelines prior to running them:
 
 The SDK separates the platform backend from individual node logic:
 
+- **CLI Tool** (`cli.py`): Bundles a `flowweaver create-plugin <name>` scaffolding tool. It generates fully structured, boilerplate plugin packages containing `plugin.yaml` manifests, `requirements.txt`, and sample node code.
 - **Dataset Abstraction** (`dataset.py`): Exposes multiple underlying engines wrapper implementations:
   - `TabularDataset`: Memory list of row dictionaries.
   - `PolarsDataset`: Wraps Polars DataFrame for highly optimized native parallel query operations.
