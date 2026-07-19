@@ -48,7 +48,7 @@ def main():
     print("==================================================")
     print("   - [Backend API] will run on: http://localhost:8000")
     print("   - [Backend API Docs] will run on: http://localhost:8000/api/docs")
-    print("   - [Frontend UI] will run on: http://localhost:5173")
+    print("   - [Frontend UI] will run on: http://localhost:8080")
     print("Press Ctrl+C to terminate both servers.\\n")
 
     backend_cmd = f"{python_path} -m uvicorn main:app --reload --port 8000"

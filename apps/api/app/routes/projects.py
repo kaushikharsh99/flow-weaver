@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Any
 from app.db import get_db
 from app import models, schemas
 
@@ -58,6 +58,3 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     db.delete(project)
     db.commit()
     return None
-
-# Add missing import for Dict, Any in router
-from typing import Dict, Any

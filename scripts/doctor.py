@@ -94,8 +94,8 @@ def main():
         print("❌ Occupied (Uvicorn or another process running)")
         all_ok = False
 
-    print("Checking port 5173 (Frontend UI) ... ", end="")
-    if check_port(5173):
+    print("Checking port 8080 (Frontend UI) ... ", end="")
+    if check_port(8080):
         print("✔ Free")
     else:
         print("❌ Occupied (Vite or another process running)")
