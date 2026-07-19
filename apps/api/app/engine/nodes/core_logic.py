@@ -153,19 +153,124 @@ def filter_by_detected_language(dataset: Dataset, column: str, target_lang: str)
     return TabularDataset(filtered, columns=dataset.columns())
 
 
-def deduplicate_records(dataset: Dataset, columns: List[str]) -> Dataset:
-    """Deduplicates dataset records based on exact key column matches."""
+def compute_simhash(text: str, f: int = 64) -> int:
+    """Compute f-bit SimHash fingerprint for locality-sensitive text similarity."""
+    words = re.findall(r'\w+', text.lower())
+    if not words:
+        return 0
+    v = [0] * f
+    for word in words:
+        import hashlib
+        h = int(hashlib.md5(word.encode('utf-8')).hexdigest(), 16)
+        for i in range(f):
+            bit = (h >> i) & 1
+            v[i] += 1 if bit else -1
+    fingerprint = 0
+    for i in range(f):
+        if v[i] > 0:
+            fingerprint |= (1 << i)
+    return fingerprint
+
+def hamming_distance(x: int, y: int) -> int:
+    """Calculate the Hamming distance (differing bits) between two SimHash fingerprints."""
+    return bin(x ^ y).count('1')
+
+def compute_minhash_signature(text: str, num_perm: int = 64) -> List[int]:
+    """Compute MinHash signatures of word n-grams sets."""
+    words = text.lower().split()
+    shingles = set(" ".join(words[i:i+2]) for i in range(len(words)-1))
+    if not shingles:
+        shingles = set(words)
+    if not shingles:
+        return [0xffffffff] * num_perm
+    signature = [0xffffffff] * num_perm
+    for shingle in shingles:
+        h_base = int(hash(shingle))
+        for i in range(num_perm):
+            h = (h_base ^ (i * 0x45d9f3b)) & 0xffffffff
+            if h < signature[i]:
+                signature[i] = h
+    return signature
+
+def jaccard_similarity_minhash(sig1: List[int], sig2: List[int]) -> float:
+    """Estimate Jaccard set similarity from MinHash signature lists."""
+    matches = sum(1 for i, j in zip(sig1, sig2) if i == j)
+    return matches / len(sig1)
+
+def compute_hash_key(text: str) -> str:
+    """Compute standard cryptographic digest (xxhash with sha256 fallback)."""
+    try:
+        import xxhash
+        return xxhash.xxh64(text).hexdigest()
+    except ImportError:
+        import hashlib
+        return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+def deduplicate_records(
+    dataset: Dataset, 
+    columns: Optional[List[str]] = None,
+    column: Optional[str] = None,
+    method: str = "exact",
+    threshold: float = 0.85,
+    max_hamming_dist: int = 3
+) -> Dataset:
+    """Deduplicates dataset records supporting Exact matching, SimHash, MinHash, and xxHash hashing."""
     rows = dataset.to_list()
-    seen = set()
     filtered = []
     
-    for r in rows:
-        # Create hash key from column tuple values
-        key = tuple(str(r.get(col, "")) for col in columns) if columns else tuple(r.items())
-        if key not in seen:
-            seen.add(key)
-            filtered.append(r)
-            
+    if method == "exact":
+        seen_exact = set()
+        for r in rows:
+            if columns:
+                key = tuple(str(r.get(col, "")) for col in columns)
+            elif column:
+                key = str(r.get(column, ""))
+            else:
+                key = tuple(str(k) + ":" + str(v) for k, v in sorted(r.items()))
+            if key not in seen_exact:
+                seen_exact.add(key)
+                filtered.append(r)
+                
+    elif method == "hash":
+        seen_hashes = set()
+        col = column or (columns[0] if columns else None)
+        for r in rows:
+            text = str(r.get(col, "")) if col else str(r)
+            h = compute_hash_key(text)
+            if h not in seen_hashes:
+                seen_hashes.add(h)
+                filtered.append(r)
+                
+    elif method == "simhash":
+        fingerprints = []
+        col = column or (columns[0] if columns else None)
+        for r in rows:
+            text = str(r.get(col, "")) if col else str(r)
+            fp = compute_simhash(text)
+            is_dup = False
+            for prev_fp in fingerprints:
+                if hamming_distance(fp, prev_fp) <= max_hamming_dist:
+                    is_dup = True
+                    break
+            if not is_dup:
+                fingerprints.append(fp)
+                filtered.append(r)
+                
+    elif method == "minhash":
+        signatures = []
+        col = column or (columns[0] if columns else None)
+        for r in rows:
+            text = str(r.get(col, "")) if col else str(r)
+            sig = compute_minhash_signature(text)
+            is_dup = False
+            for prev_sig in signatures:
+                if jaccard_similarity_minhash(sig, prev_sig) >= threshold:
+                    is_dup = True
+                    break
+            if not is_dup:
+                signatures.append(sig)
+                filtered.append(r)
+                
     return TabularDataset(filtered, columns=dataset.columns())
 
 

@@ -90,15 +90,37 @@ class LanguageFilterNode(Node):
         return {"out": filter_by_detected_language(dataset, col, lang)}
 
 
-@node(name="Dedup Exact", category="Dedup", icon="Copy", description="Remove duplicate records based on exact key columns")
+@node(name="Deduplicate Records", category="Dedup", icon="Copy", description="Remove duplicate records using Exact, Hash, SimHash, or MinHash Jaccard algorithms")
 class DedupNode(Node):
     id = "dedup_exact"
     in_data = Input.tabular(label="Rows")
     out = Output.tabular(label="Deduplicated Rows")
-    columns = Param.text(label="Key Columns (comma-separated)", default="", description="e.g. id, name (leave blank to check all columns)")
+    
+    method = Param.select(label="Deduplication Algorithm", default="exact", options=[
+        {"label": "Exact Matching", "value": "exact"},
+        {"label": "Hash matching (xxHash/SHA256)", "value": "hash"},
+        {"label": "SimHash (Near-duplicate text)", "value": "simhash"},
+        {"label": "MinHash (Jaccard similarity)", "value": "minhash"}
+    ])
+    column = Param.column(label="Target Column (for Hash/SimHash/MinHash)", default="text")
+    columns = Param.text(label="Key Columns (for Exact match, comma-separated)", default="", description="e.g. id, name (leave blank to check all)")
+    threshold = Param.slider(label="MinHash Jaccard Threshold", default=0.85, min=0.0, max=1.0, step=0.01)
+    max_hamming = Param.number(label="SimHash Max Hamming Distance (bits)", default=3, min=0, max=64)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")
+        method = ctx.parameters.get("method", "exact")
+        col = ctx.parameters.get("column", "")
         cols_str = ctx.parameters.get("columns", "")
-        cols = [c.strip() for c in cols_str.split(",") if c.strip()]
-        return {"out": deduplicate_records(dataset, cols)}
+        cols = [c.strip() for c in cols_str.split(",") if c.strip()] if cols_str else None
+        threshold = float(ctx.parameters.get("threshold", 0.85))
+        max_hamming = int(ctx.parameters.get("max_hamming", 3))
+        
+        return {"out": deduplicate_records(
+            dataset=dataset, 
+            columns=cols,
+            column=col,
+            method=method,
+            threshold=threshold,
+            max_hamming_dist=max_hamming
+        )}
