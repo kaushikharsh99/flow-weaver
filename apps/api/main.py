@@ -8,6 +8,15 @@ from app.db import engine, Base
 # Create database tables (SQLite in dev)
 Base.metadata.create_all(bind=engine)
 
+# Seed default preprocessing templates
+from app.db import SessionLocal
+from app.seed import seed_templates
+db = SessionLocal()
+try:
+    seed_templates(db)
+finally:
+    db.close()
+
 from app.engine.registry import registry
 # Dynamically scan and load local developer plugins
 registry.load_local_plugins("plugins")
