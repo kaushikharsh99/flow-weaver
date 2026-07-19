@@ -49,7 +49,7 @@ dummy_pipeline = {
             "source": "load_1",
             "target": "write_1",
             "sourceHandle": "out",
-            "targetHandle": "in"
+            "targetHandle": "in_data"
         }
     ]
 }

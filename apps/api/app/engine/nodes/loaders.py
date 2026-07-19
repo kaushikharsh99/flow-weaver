@@ -2,34 +2,27 @@ import csv
 import json
 import os
 from typing import Dict, Any
-from flowweaver.sdk import Node, ExecutionContext, TabularDataset, Port, Parameter
+from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext, TabularDataset
+from app.engine.nodes.core_logic import load_jsonl_file, load_parquet_file, load_hf_hub_dataset
 
+@node(name="Load CSV", category="Loaders", icon="FileSpreadsheet", description="Read a CSV file from path")
 class LoadCSVNode(Node):
     id = "load_csv"
-    label = "Load CSV"
-    category = "Loaders"
-    description = "Read a CSV file from a URL or path"
-    icon = "FileSpreadsheet"
-    color = "#4f86c6"
-    inputs = []
-    outputs = [Port(id="out", label="rows", type="tabular")]
-    params_schema = [
-        Parameter(key="path", label="File path", type="text", default="data/users.csv"),
-        Parameter(key="delimiter", label="Delimiter", type="select", default=",", options=[
-            {"label": "Comma", "value": ","}, {"label": "Tab", "value": "\t"}, {"label": "Semicolon", "value": ";"}
-        ]),
-        Parameter(key="header", label="Has header row", type="boolean", default=True),
-    ]
+    out = Output.tabular(label="Rows")
+    
+    path = Param.file(label="File path", default="data/sample.csv", accept=".csv")
+    delimiter = Param.select(label="Delimiter", default=",", options=[
+        {"label": "Comma", "value": ","}, {"label": "Tab", "value": "\t"}, {"label": "Semicolon", "value": ";"}
+    ])
+    header = Param.boolean(label="Has header row", default=True)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         path = ctx.parameters.get("path", "")
+        # Resolve env variables
         for k, v in ctx.variables.items():
             path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
             
-        ctx.log(f"Reading CSV file from: {path}")
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"CSV file not found at path: {path}")
-            
+        ctx.log(f"Loading CSV from: {path}")
         delimiter = ctx.parameters.get("delimiter", ",")
         has_header = ctx.parameters.get("header", True)
         
@@ -41,52 +34,78 @@ class LoadCSVNode(Node):
                 try:
                     header = next(reader)
                 except StopIteration:
-                    ctx.log("CSV file is empty.")
                     return {"out": TabularDataset([], columns=[])}
-                    
             for row in reader:
-                # Store row as dictionary matching columns
-                row_dict = {}
-                for idx, col in enumerate(header):
-                    if idx < len(row):
-                        row_dict[col] = row[idx]
-                rows.append(row_dict)
-                
-        ctx.log(f"Successfully loaded {len(rows)} rows from CSV.")
-        return {"out": TabularDataset(rows, columns=header)}
+                if has_header:
+                    rows.append(dict(zip(header, row)))
+                else:
+                    rows.append({f"col_{i}": v for i, v in enumerate(row)})
+        return {"out": TabularDataset(rows, columns=header if has_header else [])}
 
+
+@node(name="Load JSON", category="Loaders", icon="FileText", description="Parse a JSON array of records")
 class LoadJSONNode(Node):
     id = "load_json"
-    label = "Load JSON"
-    category = "Loaders"
-    description = "Parse a JSON array of records"
-    icon = "FileText"
-    color = "#4f86c6"
-    inputs = []
-    outputs = [Port(id="out", label="records", type="tabular")]
-    params_schema = [
-        Parameter(key="path", label="File path", type="text", default="data/records.json"),
-        Parameter(key="root", label="Root key", type="text", default="data", placeholder="data"),
-    ]
+    out = Output.tabular(label="Records")
+    
+    path = Param.file(label="File path", default="data/sample.json", accept=".json")
+    root_key = Param.text(label="Root key", default="", placeholder="data")
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         path = ctx.parameters.get("path", "")
         for k, v in ctx.variables.items():
             path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
             
-        ctx.log(f"Reading JSON file from: {path}")
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"JSON file not found at path: {path}")
-            
+        ctx.log(f"Loading JSON from: {path}")
         with open(path, mode='r', encoding='utf-8') as f:
             data = json.load(f)
             
-        root_key = ctx.parameters.get("root", "")
-        if root_key and isinstance(data, dict):
-            data = data.get(root_key, data)
+        root = ctx.parameters.get("root_key", "")
+        if root and isinstance(data, dict):
+            data = data.get(root, data)
             
         if not isinstance(data, list):
             data = [data]
-            
-        ctx.log(f"Successfully parsed JSON data array.")
         return {"out": TabularDataset(data)}
+
+
+@node(name="Load JSONL", category="Loaders", icon="Layers", description="Parse a JSON Lines file (one record per line)")
+class LoadJSONLNode(Node):
+    id = "load_jsonl"
+    out = Output.tabular(label="Records")
+    path = Param.file(label="File path", default="data/sample.jsonl", accept=".jsonl")
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        path = ctx.parameters.get("path", "")
+        for k, v in ctx.variables.items():
+            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
+        return {"out": load_jsonl_file(path)}
+
+
+@node(name="Load Parquet", category="Loaders", icon="Database", description="Load Parquet dataset using Polars")
+class LoadParquetNode(Node):
+    id = "load_parquet"
+    out = Output.tabular(label="Table")
+    path = Param.file(label="File path", default="data/sample.parquet", accept=".parquet")
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        path = ctx.parameters.get("path", "")
+        for k, v in ctx.variables.items():
+            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
+        return {"out": load_parquet_file(path)}
+
+
+@node(name="HuggingFace Dataset", category="Loaders", icon="Globe", description="Download a dataset from Hugging Face Hub")
+class LoadHFDatasetNode(Node):
+    id = "load_hf_dataset"
+    out = Output.tabular(label="Dataset")
+    
+    dataset_id = Param.text(label="Dataset Name", default="imdb", placeholder="e.g. wikitext, imdb")
+    split = Param.text(label="Split", default="train")
+    limit = Param.number(label="Row Limit", default=100, min=1)
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        dataset_id = ctx.parameters.get("dataset_id", "imdb")
+        split = ctx.parameters.get("split", "train")
+        limit = int(ctx.parameters.get("limit", 100))
+        return {"out": load_hf_hub_dataset(dataset_id, split=split, limit=limit)}
