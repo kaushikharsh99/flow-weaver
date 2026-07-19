@@ -66,9 +66,12 @@ def start_execution(pipeline_id: str, db: Session = Depends(get_db)):
     
     return {
         "data": {
-            "executionId": execution.id,
+            "id": execution.id,
+            "pipelineId": execution.pipeline_id,
             "status": execution.status,
-            "startedAt": execution.started_at.isoformat() + "Z"
+            "progress": execution.progress,
+            "startedAt": execution.started_at.isoformat() + "Z",
+            "completedAt": None
         }
     }
 

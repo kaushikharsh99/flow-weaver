@@ -1,9 +1,15 @@
 export type { ApiClient } from './client';
 export * from './types';
 export { createMockClient } from './mock-client';
+export { createHttpClient } from './http-client';
 
 import { createMockClient } from './mock-client';
+import { createHttpClient } from './http-client';
 
-// The single API client instance used throughout the app.
-// Swap `createMockClient()` for `createHttpClient(baseUrl)` when the backend exists.
-export const api = createMockClient();
+export const isMockMode = import.meta.env.VITE_USE_MOCK_API !== 'false';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+export const api = isMockMode 
+  ? createMockClient() 
+  : createHttpClient(API_URL);

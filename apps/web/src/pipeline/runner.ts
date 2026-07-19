@@ -8,6 +8,7 @@ import {
   MOCK_EXECUTION_MAX_DELAY_MS,
   MOCK_ERROR_RATE
 } from "./constants";
+import { api, isMockMode } from "../api";
 
 function topoSort(nodes: PipelineNode[], edges: Edge[]): { order: string[][]; error?: string } {
   const indeg = new Map<string, number>();
@@ -69,6 +70,63 @@ export async function runPipeline() {
     store.setRuntime(v.problem.nodeId, { status: "error", error: v.problem.msg });
     toast.error(v.problem.msg);
     return;
+  }
+
+  // --- Real Backend Execution via REST + WebSockets ---
+  if (!isMockMode) {
+    try {
+      store.setRunning(true);
+      // 1. Synchronize the current nodes and edges setup with database
+      await store.savePipelineToServer();
+      const pipelineId = useStore.getState().pipelineId;
+      if (!pipelineId) throw new Error("Pipeline could not be synchronized with server.");
+
+      // 2. Start the execution run on backend
+      const { data: exec } = await api.startExecution(pipelineId);
+      const execId = exec.id;
+      
+      // 3. Connect to live websocket execution logs stream
+      const wsUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api')
+        .replace(/^http/, 'ws') + `/executions/${execId}/stream`;
+      
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "EXECUTION_STARTED") {
+          nodes.forEach(n => store.setRuntime(n.id, { status: "running", error: undefined }));
+        } else if (payload.type === "NODE_UPDATE") {
+          const { nodeId, status, preview } = payload;
+          store.setRuntime(nodeId, {
+            status: status as any,
+            preview,
+            error: status === "error" ? "Execution failed" : undefined
+          });
+        } else if (payload.type === "LOG") {
+          console.log(`[Backend Log] ${payload.nodeId || 'global'}: ${payload.message}`);
+        } else if (payload.type === "EXECUTION_COMPLETED") {
+          store.setRunning(false);
+          toast.success("Pipeline ran successfully on backend.");
+          ws.close();
+        } else if (payload.type === "EXECUTION_FAILED") {
+          store.setRunning(false);
+          toast.error("Pipeline run failed on backend", { description: payload.error });
+          ws.close();
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("Execution WebSocket error:", err);
+        store.setRunning(false);
+        toast.error("Execution stream disconnected.");
+      };
+      
+      return;
+    } catch (err: any) {
+      store.setRunning(false);
+      toast.error("Failed to execute pipeline on backend", { description: err.message });
+      return;
+    }
   }
 
   store.setRunning(true);
