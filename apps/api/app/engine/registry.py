@@ -1,13 +1,22 @@
+"""
+FlowWeaver Node Registry — Auto-Discovery Engine
+
+Boot sequence:
+    Scan built-in nodes → Import → Validate → Register
+    Scan plugins/ → Load plugin.yaml → Import → Validate → Register
+    → Expose via /api/nodes
+
+Zero manual registration. The developer never touches this file.
+"""
 import os
+import sys
 import yaml
 import importlib
-import sys
+import importlib.util
+import inspect
 from typing import List, Dict, Any, Optional
 from flowweaver.sdk import Node, Port, Parameter
-from app.engine.nodes.loaders import LoadCSVNode, LoadJSONNode
-from app.engine.nodes.filters import FilterRowsNode
-from app.engine.nodes.exports import WriteCSVNode
-from app.engine.nodes.fallback import FallbackNode
+
 
 class NodeRegistry:
     def __init__(self):
@@ -15,6 +24,7 @@ class NodeRegistry:
         self._loaded_plugins: List[Dict[str, Any]] = []
 
     def register(self, node: Node):
+        """Register a node instance. Used internally by auto-discovery."""
         self._nodes[node.id] = node
 
     def get(self, node_id: str) -> Optional[Node]:
@@ -26,18 +36,19 @@ class NodeRegistry:
     def list_plugins(self) -> List[Dict[str, Any]]:
         return self._loaded_plugins
 
-    def validate_config(self, node_id: str, config: Dict[str, Any]) -> tuple[bool, List[str]]:
+    def validate_config(self, node_id: str, config: Dict[str, Any]) -> tuple:
+        """Validate a parameter configuration against the node's schema."""
         node = self.get(node_id)
         if not node:
             return False, [f"Node type '{node_id}' not found in registry."]
-        
+
         errors = []
         for param in node.params_schema:
             val = config.get(param.key)
             if val is None:
                 continue
-                
-            if param.type == "number" or param.type == "slider":
+
+            if param.type in ("number", "slider"):
                 if not isinstance(val, (int, float)):
                     errors.append(f"Parameter '{param.key}' must be a number.")
                 else:
@@ -53,8 +64,54 @@ class NodeRegistry:
                     valid_values = {opt["value"] for opt in param.options}
                     if str(val) not in valid_values:
                         errors.append(f"Parameter '{param.key}' value '{val}' is not a valid option.")
-                        
+
         return len(errors) == 0, errors
+
+    # ------------------------------------------------------------------
+    # Auto-discovery: built-in nodes
+    # ------------------------------------------------------------------
+
+    def discover_builtin_nodes(self, nodes_package_dir: str):
+        """Scan a Python package directory for Node subclasses and register them all.
+
+        This eliminates manual registration. Just create a .py file with Node subclasses
+        in the nodes/ directory and they'll be discovered automatically.
+        """
+        if not os.path.isdir(nodes_package_dir):
+            return
+
+        package_name = "app.engine.nodes"
+
+        for filename in sorted(os.listdir(nodes_package_dir)):
+            if filename.startswith("_") or not filename.endswith(".py"):
+                continue
+
+            module_name = f"{package_name}.{filename[:-3]}"
+            try:
+                mod = importlib.import_module(module_name)
+                self._register_nodes_from_module(mod, source=f"builtin:{filename}")
+            except Exception as e:
+                print(f"  ⚠ Failed to import built-in module '{module_name}': {e}")
+
+    def _register_nodes_from_module(self, module, source: str = ""):
+        """Find all Node subclasses in a module and register instances."""
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            # Must be a subclass of Node, not Node itself, and not imported from elsewhere
+            if (issubclass(obj, Node) and
+                    obj is not Node and
+                    obj.__module__ == module.__name__ and
+                    hasattr(obj, "id") and obj.id):
+                try:
+                    instance = obj()
+                    if instance.id and instance.id not in self._nodes:
+                        self.register(instance)
+                        print(f"  ✔ Registered node '{instance.label}' [{instance.id}] from {source}")
+                except Exception as e:
+                    print(f"  ⚠ Failed to instantiate {name}: {e}")
+
+    # ------------------------------------------------------------------
+    # Auto-discovery: local plugins
+    # ------------------------------------------------------------------
 
     def load_local_plugins(self, plugins_dir: str):
         """Scan and load local plugins dynamically from plugin.yaml config files."""
@@ -63,11 +120,12 @@ class NodeRegistry:
             return
 
         # Add plugins directory to sys.path to allow dynamic imports
-        if plugins_dir not in sys.path:
-            sys.path.insert(0, plugins_dir)
+        abs_plugins_dir = os.path.abspath(plugins_dir)
+        if abs_plugins_dir not in sys.path:
+            sys.path.insert(0, abs_plugins_dir)
 
         print(f"Scanning for plugins in: {plugins_dir}...")
-        for entry in os.listdir(plugins_dir):
+        for entry in sorted(os.listdir(plugins_dir)):
             full_path = os.path.join(plugins_dir, entry)
             if os.path.isdir(full_path):
                 yaml_path = os.path.join(full_path, "plugin.yaml")
@@ -75,14 +133,15 @@ class NodeRegistry:
                     try:
                         with open(yaml_path, "r") as f:
                             meta = yaml.safe_load(f)
-                        
+
                         plugin_id = meta.get("id")
                         nodes_list = meta.get("nodes", [])
-                        
+
                         # Add plugin directory to path so imports within it resolve correctly
-                        if full_path not in sys.path:
-                            sys.path.insert(0, full_path)
-                            
+                        abs_full_path = os.path.abspath(full_path)
+                        if abs_full_path not in sys.path:
+                            sys.path.insert(0, abs_full_path)
+
                         # Load custom node classes declared in yaml
                         loaded_node_ids = []
                         for node_path in nodes_list:
@@ -90,13 +149,13 @@ class NodeRegistry:
                             # Dynamically import module
                             mod = importlib.import_module(module_name)
                             node_class = getattr(mod, class_name)
-                            
+
                             # Instantiate node
                             node_instance = node_class()
                             self.register(node_instance)
                             loaded_node_ids.append(node_instance.id)
-                            print(f"Successfully loaded node '{node_instance.label}' [{node_instance.id}] from plugin '{plugin_id}'.")
-                            
+                            print(f"  ✔ Loaded plugin node '{node_instance.label}' [{node_instance.id}] from plugin '{plugin_id}'.")
+
                         self._loaded_plugins.append({
                             "id": plugin_id,
                             "name": meta.get("name", plugin_id),
@@ -104,55 +163,19 @@ class NodeRegistry:
                             "author": meta.get("author", "Unknown"),
                             "nodes": loaded_node_ids
                         })
-                        
+
                     except Exception as e:
-                        print(f"Failed to load plugin '{entry}': {str(e)}")
+                        print(f"  ⚠ Failed to load plugin '{entry}': {str(e)}")
+
 
 # Create global registry instance
 registry = NodeRegistry()
 
-# Register core implementations
-registry.register(LoadCSVNode())
-registry.register(LoadJSONNode())
-registry.register(FilterRowsNode())
-registry.register(WriteCSVNode())
+# Auto-discover all built-in nodes from the nodes/ package
+# This replaces ALL manual registry.register() calls
+_nodes_dir = os.path.join(os.path.dirname(__file__), "nodes")
+print("Discovering built-in nodes...")
+registry.discover_builtin_nodes(_nodes_dir)
+print(f"Registry loaded: {len(registry.list_all())} node(s) registered.")
 
-# Seed fallback nodes to complete the 24 built-in list
-fallback_node_ids = [
-    ("http_fetch", "HTTP Fetch", "Loaders", "Fetch data from a REST endpoint", "Globe", "#4f86c6", [], [Port(id="out", label="response", type="any")]),
-    ("load_sql", "SQL Query", "Loaders", "Run a SELECT against a database", "Database", "#4f86c6", [], [Port(id="out", label="rows", type="tabular")]),
-    ("load_s3", "S3 Bucket", "Loaders", "List and read objects from S3", "Cloud", "#4f86c6", [], [Port(id="out", label="objects", type="any")]),
-    ("load_images", "Load Images", "Loaders", "Read a directory of images", "ImageIcon", "#4f86c6", [], [Port(id="out", label="images", type="image")]),
-    ("search_text", "Search Text", "Filters", "Regex/substring filter on a text column", "Search", "#c67a4f", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="matches", type="tabular")]),
-    ("sample_rows", "Sample", "Filters", "Randomly sample N rows", "Shuffle", "#c67a4f", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("select_columns", "Select Columns", "Transform", "Project a subset of columns", "Columns3", "#7a4fc6", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("sort_rows", "Sort", "Transform", "Sort by a column", "ArrowUpDown", "#7a4fc6", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("join_rows", "Join", "Transform", "Join two tables on a key", "GitMerge", "#7a4fc6", [Port(id="left", label="left", type="tabular", required=True), Port(id="right", label="right", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("split_col", "Split Column", "Transform", "Split a column by a delimiter", "Scissors", "#7a4fc6", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("map_expr", "Map Expression", "Transform", "Compute a new column from an expression", "Wand2", "#7a4fc6", [Port(id="in", label="rows", type="any", required=True)], [Port(id="out", label="rows", type="any")]),
-    ("dedup_exact", "Dedup Exact", "Dedup", "Remove exact duplicate rows", "Copy", "#4fc6a0", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("dedup_fuzzy", "Dedup Fuzzy", "Dedup", "Fuzzy-match near duplicates", "Fingerprint", "#4fc6a0", [Port(id="in", label="rows", type="tabular", required=True)], [Port(id="out", label="rows", type="tabular")]),
-    ("normalize", "Normalize", "Dedup", "Normalize whitespace, case, encoding", "SlidersHorizontal", "#4fc6a0", [Port(id="in", label="rows", type="any", required=True)], [Port(id="out", label="rows", type="any")]),
-    ("tokenize", "Tokenize", "NLP", "Split text into tokens", "Type", "#c64f86", [Port(id="in", label="text", type="text", required=True)], [Port(id="out", label="tokens", type="any")]),
-    ("detect_lang", "Detect Language", "NLP", "Identify text language", "Languages", "#c64f86", [Port(id="in", label="text", type="text", required=True)], [Port(id="out", label="text+lang", type="text")]),
-    ("sentiment", "Sentiment", "NLP", "Classify text sentiment", "Sparkles", "#c64f86", [Port(id="in", label="text", type="text", required=True)], [Port(id="out", label="labeled", type="text")]),
-    ("embed_text", "Embeddings", "NLP", "Content vector embeddings", "Hash", "#c64f86", [Port(id="in", label="text", type="text", required=True)], [Port(id="out", label="vectors", type="any")]),
-    ("summarize", "Summarize", "NLP", "Abstractive summarization", "MessageSquare", "#c64f86", [Port(id="in", label="text", type="text", required=True)], [Port(id="out", label="summaries", type="text")]),
-    ("write_json", "Write JSON", "Export", "Serialize records to JSON", "Download", "#c6b74f", [Port(id="in", label="rows", type="any", required=True)], []),
-    ("webhook", "Send Webhook", "Export", "POST rows to an endpoint", "Send", "#c6b74f", [Port(id="in", label="rows", type="any", required=True)], []),
-    ("upload_s3", "Upload S3", "Export", "Upload files to S3", "Upload", "#c6b74f", [Port(id="in", label="data", type="any", required=True)], []),
-]
-
-for node_id, label, cat, desc, icon, color, inputs, outputs in fallback_node_ids:
-    fallback_node = FallbackNode(node_id)
-    fallback_node.label = label
-    fallback_node.category = cat
-    fallback_node.description = desc
-    fallback_node.icon = icon
-    fallback_node.color = color
-    fallback_node.inputs = inputs
-    fallback_node.outputs = outputs
-    fallback_node.params_schema = []
-    registry.register(fallback_node)
-
-# Trigger dynamic loading scanning of "plugins" directory in main.py entry
+# Note: Dynamic plugin loading is triggered separately in main.py startup

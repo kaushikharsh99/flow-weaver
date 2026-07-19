@@ -1,6 +1,10 @@
 import os
 import sys
 import argparse
+import json
+import tarfile
+import hashlib
+import importlib.util
 
 def create_plugin(name: str):
     """Generates a new plugin folder structure based on the platform template."""
@@ -95,18 +99,255 @@ Register this plugin directory inside the FlowWeaver plugins directory, or deplo
     print(f"  - {name}/requirements.txt")
     print(f"  - {name}/{safe_name}/nodes.py")
 
+
+def create_node(name: str, category: str):
+    """Scaffolds a single node file with tests and examples."""
+    safe_name = name.lower().replace("-", "_").replace(" ", "_")
+    base_path = os.path.join(os.getcwd(), name)
+    
+    if os.path.exists(base_path):
+        print(f"Error: Directory '{name}' already exists.")
+        sys.exit(1)
+        
+    print(f"Creating node template at: {base_path}...")
+    os.makedirs(base_path, exist_ok=True)
+    os.makedirs(os.path.join(base_path, "tests"), exist_ok=True)
+    os.makedirs(os.path.join(base_path, "examples"), exist_ok=True)
+
+    if category == "Loader":
+        inputs_str = ""
+        outputs_str = "    out = Output.tabular()\n"
+    elif category == "Transform":
+        inputs_str = "    in_data = Input.tabular()\n"
+        outputs_str = "    out = Output.tabular()\n"
+    elif category == "Filter":
+        inputs_str = "    in_data = Input.tabular()\n"
+        outputs_str = "    out = Output.tabular()\n"
+    elif category == "Exporter":
+        inputs_str = "    in_data = Input.any()\n"
+        outputs_str = ""
+    elif category == "AI":
+        inputs_str = "    in_text = Input.text()\n"
+        outputs_str = "    out = Output.text()\n"
+    else:
+        inputs_str = "    in_data = Input.any()\n"
+        outputs_str = "    out = Output.any()\n"
+
+    class_name = "".join(part.title() for part in safe_name.split("_")) + "Node"
+
+    node_py = f"""from flowweaver.sdk import Node, Input, Output, Param, node
+
+@node(name="{name}", category="{category}")
+class {class_name}(Node):
+{inputs_str}{outputs_str}
+    def execute(self, inputs, ctx):
+        pass
+"""
+    with open(os.path.join(base_path, "node.py"), "w") as f:
+        f.write(node_py.strip() + "\n")
+
+    plugin_yaml = f"""id: {safe_name}
+name: {name}
+nodes:
+  - node.{class_name}
+"""
+    with open(os.path.join(base_path, "plugin.yaml"), "w") as f:
+        f.write(plugin_yaml.strip() + "\n")
+
+    readme_md = f"""# {name}
+
+Auto-generated documentation for {name} ({category}).
+"""
+    with open(os.path.join(base_path, "README.md"), "w") as f:
+        f.write(readme_md.strip() + "\n")
+
+    test_py = f"""import json
+import os
+from node import {class_name}
+
+def test_node_execute():
+    with open(os.path.join(os.path.dirname(__file__), '..', 'examples', 'basic.json')) as f:
+        params = json.load(f)
+    n = {class_name}()
+    # assert True
+"""
+    with open(os.path.join(base_path, "tests", "test_node.py"), "w") as f:
+        f.write(test_py.strip() + "\n")
+
+    with open(os.path.join(base_path, "examples", "basic.json"), "w") as f:
+        json.dump({"example_param": "value"}, f, indent=2)
+        f.write("\n")
+
+    print(f"Successfully generated node template '{name}'!")
+
+
+def _load_node_class(path: str):
+    node_file = os.path.join(path, "node.py")
+    if not os.path.exists(node_file):
+        return None
+    sys.path.insert(0, os.path.abspath(path))
+    try:
+        spec = importlib.util.spec_from_file_location("node_module", node_file)
+        if not spec or not spec.loader:
+            return None
+        node_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(node_module)
+    except Exception as e:
+        sys.path.pop(0)
+        raise e
+    finally:
+        sys.path.pop(0)
+
+    from flowweaver.sdk import Node
+    
+    for name, obj in vars(node_module).items():
+        if isinstance(obj, type) and issubclass(obj, Node) and obj is not Node:
+            return obj
+    return None
+
+
+def test_node(path: str):
+    print(f"Testing node at {path}...")
+    examples_path = os.path.join(path, "examples", "basic.json")
+    if not os.path.exists(examples_path):
+        print(f"Error: examples/basic.json not found in {path}")
+        sys.exit(1)
+
+    node_class = _load_node_class(path)
+    if not node_class:
+        print("Error: Could not find a Node subclass in node.py")
+        sys.exit(1)
+
+    with open(examples_path, "r") as f:
+        params = json.load(f)
+
+    try:
+        instance = node_class()
+        class MockCtx:
+            def __init__(self, p):
+                self.parameters = p
+            def log(self, msg):
+                pass
+        
+        ctx = MockCtx(params)
+        instance.execute({}, ctx)
+        print("PASS")
+    except Exception as e:
+        print(f"FAIL: {e}")
+        sys.exit(1)
+
+
+def lint_node(path: str):
+    print(f"Linting node at {path}...")
+    
+    node_class = _load_node_class(path)
+    if not node_class:
+        print("Error: Could not find a Node subclass in node.py")
+        sys.exit(1)
+
+    has_error = False
+    
+    for attr in ["id", "label", "category", "description"]:
+        if not hasattr(node_class, attr) or not getattr(node_class, attr):
+            print(f"Error: Node is missing '{attr}'")
+            has_error = True
+
+    category = getattr(node_class, "category", "")
+    outputs = getattr(node_class, "outputs", [])
+    if category != "Exporter" and not outputs:
+        print("Error: Node must have at least one output port unless category is Exporter")
+        has_error = True
+
+    if not hasattr(node_class, "execute") or not callable(getattr(node_class, "execute")):
+        print("Error: Node is missing execute() method")
+        has_error = True
+
+    params_schema = getattr(node_class, "params_schema", [])
+    for p in params_schema:
+        for pattr in ["key", "label", "type"]:
+            if not hasattr(p, pattr) or getattr(p, pattr) is None:
+                print(f"Error: Parameter missing '{pattr}'")
+                has_error = True
+
+    readme_path = os.path.join(path, "README.md")
+    if not os.path.exists(readme_path):
+        print("Warning: Missing documentation (README.md)")
+
+    examples_path = os.path.join(path, "examples")
+    if not os.path.exists(examples_path) or not os.listdir(examples_path):
+        print("Warning: Missing examples in examples/")
+
+    if not hasattr(node_class, "tags") or not getattr(node_class, "tags"):
+        print("Warning: Missing tags")
+
+    if has_error:
+        print("Linting failed with errors.")
+        sys.exit(1)
+    else:
+        print("Linting passed.")
+
+
+def package_plugin(path: str):
+    print(f"Packaging plugin at {path}...")
+    plugin_yaml_path = os.path.join(path, "plugin.yaml")
+    if not os.path.exists(plugin_yaml_path):
+        print(f"Error: plugin.yaml not found in {path}")
+        sys.exit(1)
+
+    plugin_name = os.path.basename(os.path.abspath(path))
+    tar_filename = f"{plugin_name}.tar.gz"
+    
+    with tarfile.open(tar_filename, "w:gz") as tar:
+        tar.add(path, arcname=plugin_name)
+        
+    sha256_hash = hashlib.sha256()
+    with open(tar_filename, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+            
+    manifest = {
+        "archive": tar_filename,
+        "checksum": sha256_hash.hexdigest()
+    }
+    
+    with open("manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+        
+    print(f"Output path: {os.path.abspath(tar_filename)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="FlowWeaver CLI developer assistant tool.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     
-    # create-plugin subcommand
-    create_parser = subparsers.add_parser("create-plugin", help="Scaffold a new custom plugin template.")
-    create_parser.add_argument("name", type=str, help="Name of the plugin directory to create.")
+    create_plugin_parser = subparsers.add_parser("create-plugin", help="Scaffold a new custom plugin template.")
+    create_plugin_parser.add_argument("name", type=str, help="Name of the plugin directory to create.")
+
+    create_node_parser = subparsers.add_parser("create-node", help="Scaffolds a single node file with tests and examples.")
+    create_node_parser.add_argument("name", type=str, help="Name of the node directory to create.")
+    create_node_parser.add_argument("--category", type=str, required=True, choices=["Loader", "Transform", "Filter", "Exporter", "AI", "Custom"], help="Template category for the node.")
+
+    test_parser = subparsers.add_parser("test-node", help="Runs a node against its example fixtures.")
+    test_parser.add_argument("path", type=str, help="Path to the node directory.")
+
+    lint_parser = subparsers.add_parser("lint-node", help="Validates node metadata completeness.")
+    lint_parser.add_argument("path", type=str, help="Path to the node directory.")
+
+    package_parser = subparsers.add_parser("package-plugin", help="Builds a distributable archive.")
+    package_parser.add_argument("path", type=str, help="Path to the plugin directory.")
     
     args = parser.parse_args()
     
     if args.command == "create-plugin":
         create_plugin(args.name)
+    elif args.command == "create-node":
+        create_node(args.name, args.category)
+    elif args.command == "test-node":
+        test_node(args.path)
+    elif args.command == "lint-node":
+        lint_node(args.path)
+    elif args.command == "package-plugin":
+        package_plugin(args.path)
 
 if __name__ == "__main__":
     main()

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Sliders, Eye, StickyNote, AlertTriangle } from "lucide-react";
+import { X, Sliders, Eye, StickyNote, AlertTriangle, Columns3, EyeOff } from "lucide-react";
 import { NODE_TYPE_MAP, getIcon } from "../nodeTypes";
 import { useStore } from "../store";
 import type { MockPreview, ParamField } from "../types";
 import { cn } from "@/lib/utils";
 
 function Field({ f, value, onChange }: { f: ParamField; value: any; onChange: (v: any) => void }) {
+  const [showSecret, setShowSecret] = useState(false);
   const label = (
     <label className="text-[11px] uppercase tracking-wide text-white/50 font-medium">{f.label}</label>
   );
@@ -18,6 +19,7 @@ function Field({ f, value, onChange }: { f: ParamField; value: any; onChange: (v
           value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90"
         />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
       </div>
     );
   }
@@ -30,6 +32,7 @@ function Field({ f, value, onChange }: { f: ParamField; value: any; onChange: (v
           onChange={e => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90"
         />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
       </div>
     );
   }
@@ -43,22 +46,26 @@ function Field({ f, value, onChange }: { f: ParamField; value: any; onChange: (v
         >
           {f.options.map(o => <option key={o.value} value={o.value} className="bg-neutral-900">{o.label}</option>)}
         </select>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
       </div>
     );
   }
   if (f.type === "boolean") {
     return (
-      <div className="flex items-center justify-between py-1">
-        <span className="text-[12px] text-white/80">{f.label}</span>
-        <button
-          onClick={() => onChange(!value)}
-          className={cn(
-            "relative h-5 w-9 rounded-full transition-colors",
-            value ? "bg-accent-primary" : "bg-white/15",
-          )}
-        >
-          <span className={cn("absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform", value && "translate-x-4")} />
-        </button>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between py-1">
+          <span className="text-[12px] text-white/80">{f.label}</span>
+          <button
+            onClick={() => onChange(!value)}
+            className={cn(
+              "relative h-5 w-9 rounded-full transition-colors",
+              value ? "bg-accent-primary" : "bg-white/15",
+            )}
+          >
+            <span className={cn("absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform", value && "translate-x-4")} />
+          </button>
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
       </div>
     );
   }
@@ -74,6 +81,121 @@ function Field({ f, value, onChange }: { f: ParamField; value: any; onChange: (v
           onChange={e => onChange(Number(e.target.value))}
           className="w-full accent-[color:var(--accent-primary)]"
         />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "textarea") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <textarea
+          value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} rows={f.rows ?? 3}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 resize-none"
+        />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "color") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <div className="flex items-center gap-2">
+          <input
+            type="color" value={value ?? f.default ?? "#000000"} onChange={e => onChange(e.target.value)}
+            className="h-7 w-7 rounded border border-white/10 bg-transparent cursor-pointer"
+          />
+          <span className="text-[12px] text-white/90 font-mono uppercase">{value ?? f.default ?? "#000000"}</span>
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "file") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <input
+          type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder ?? f.accept}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 font-mono"
+        />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "regex") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <div className="relative">
+          <span className="absolute left-2.5 top-1.5 text-[12px] text-white/40 font-mono">/</span>
+          <input
+            type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder}
+            className="w-full bg-white/5 border border-white/10 rounded-lg pl-5 pr-5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 font-mono"
+          />
+          <span className="absolute right-2.5 top-1.5 text-[12px] text-white/40 font-mono">/</span>
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "column") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <div className="relative flex items-center">
+          <Columns3 className="absolute left-2.5 text-white/40" size={12} />
+          <input
+            type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder}
+            className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90"
+          />
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "secret") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <div className="relative flex items-center">
+          <input
+            type={showSecret ? "text" : "password"} value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder}
+            className="w-full bg-white/5 border border-white/10 rounded-lg pl-2.5 pr-8 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 font-mono"
+          />
+          <button onClick={() => setShowSecret(!showSecret)} className="absolute right-2.5 text-white/40 hover:text-white/80">
+            {showSecret ? <EyeOff size={12} /> : <Eye size={12} />}
+          </button>
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "json") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <textarea
+          value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} rows={f.rows ?? 4}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 font-mono resize-none"
+        />
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
+      </div>
+    );
+  }
+  if (f.type === "expression") {
+    return (
+      <div className="space-y-1">
+        {label}
+        <div className="relative flex items-center">
+          <span className="absolute left-2.5 text-[10px] italic font-serif text-white/40">fx</span>
+          <input
+            type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} placeholder={f.placeholder}
+            className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-2.5 py-1.5 text-[12px] outline-none focus:border-accent-primary/60 text-white/90 font-mono"
+          />
+        </div>
+        {f.description && <div className="text-[10px] text-white/30 italic">{f.description}</div>}
       </div>
     );
   }
