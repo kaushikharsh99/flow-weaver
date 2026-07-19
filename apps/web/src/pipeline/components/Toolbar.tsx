@@ -117,45 +117,78 @@ export function Toolbar() {
 
       <div className="flex-1" />
 
-      <button
+      <motion.button
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.97 }}
         onClick={() => setPalette(true)}
         className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[11px] text-white/60 hover:text-white/90"
       >
         <CommandIcon size={11} /> <span>K</span>
-      </button>
+      </motion.button>
 
-      <button onClick={undo} disabled={!history.length} className="p-1.5 rounded hover:bg-white/5 text-white/70 disabled:opacity-30" title="Undo">
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
+        onClick={undo}
+        disabled={!history.length}
+        className="p-1.5 rounded hover:bg-white/5 text-white/70 disabled:opacity-30"
+        title="Undo"
+      >
         <Undo2 size={14} />
-      </button>
-      <button onClick={redo} disabled={!future.length} className="p-1.5 rounded hover:bg-white/5 text-white/70 disabled:opacity-30" title="Redo">
+      </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
+        onClick={redo}
+        disabled={!future.length}
+        className="p-1.5 rounded hover:bg-white/5 text-white/70 disabled:opacity-30"
+        title="Redo"
+      >
         <Redo2 size={14} />
-      </button>
+      </motion.button>
 
-      <button
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
         onClick={() => setSnap(!snapOn)}
         className={cn("p-1.5 rounded text-white/70 hover:bg-white/5", snapOn && "bg-accent-primary/20 text-accent-primary")}
         title="Snap to grid"
       >
         <Grid3x3 size={14} />
-      </button>
+      </motion.button>
 
-      <button onClick={handleSave} className="p-1.5 rounded hover:bg-white/5 text-white/70" title="Save JSON">
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
+        onClick={handleSave}
+        className="p-1.5 rounded hover:bg-white/5 text-white/70"
+        title="Save JSON"
+      >
         <Save size={14} />
-      </button>
-      <button onClick={() => fileRef.current?.click()} className="p-1.5 rounded hover:bg-white/5 text-white/70" title="Load JSON">
+      </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
+        onClick={() => fileRef.current?.click()}
+        className="p-1.5 rounded hover:bg-white/5 text-white/70"
+        title="Load JSON"
+      >
         <Upload size={14} />
-      </button>
+      </motion.button>
       <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={handleLoad} />
 
-      <button
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         className="p-1.5 rounded hover:bg-white/5 text-white/70"
         title="Toggle theme"
       >
         {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-      </button>
+      </motion.button>
 
       <motion.button
+        whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.96 }}
         onClick={handleRun}
         className={cn(

@@ -108,6 +108,30 @@ function InnerCanvas() {
 
   return (
     <div ref={wrapperRef} className="relative flex-1 h-full" onDragOver={onDragOver} onDrop={onDrop}>
+      {tab.nodes.length === 0 && (
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-center p-6 z-10 select-none">
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="max-w-sm bg-neutral-900/60 border border-white/5 p-8 rounded-2xl backdrop-blur-md shadow-2xl"
+          >
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-accent-primary to-accent-primary/40 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-accent-primary/20">
+              <Focus size={18} className="text-white" />
+            </div>
+            <h3 className="text-[13px] font-semibold text-white/90">Design your Preprocessing Pipeline</h3>
+            <p className="mt-2 text-[12px] text-white/50 leading-relaxed">
+              Drag nodes from the sidebar palette, or search and import one of our templates.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-1.5">
+              <kbd className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] text-white/60">Ctrl</kbd>
+              <span className="text-[10px] text-white/40">+</span>
+              <kbd className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] text-white/60">K</kbd>
+              <span className="text-[10px] text-white/40">to open command center</span>
+            </div>
+          </motion.div>
+        </div>
+      )}
       <ReactFlow
         nodes={tab.nodes as PipelineNode[]}
         edges={edges}
