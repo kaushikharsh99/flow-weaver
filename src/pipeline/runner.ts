@@ -3,6 +3,11 @@ import { NODE_TYPE_MAP } from "./nodeTypes";
 import type { PipelineNode } from "./store";
 import { useStore } from "./store";
 import type { Edge } from "reactflow";
+import {
+  MOCK_EXECUTION_MIN_DELAY_MS,
+  MOCK_EXECUTION_MAX_DELAY_MS,
+  MOCK_ERROR_RATE
+} from "./constants";
 
 function topoSort(nodes: PipelineNode[], edges: Edge[]): { order: string[][]; error?: string } {
   const indeg = new Map<string, number>();
@@ -100,10 +105,10 @@ export async function runPipeline() {
     // set all running simultaneously
     inLayer.forEach(id => store.setRuntime(id, { status: "running", error: undefined }));
     await Promise.all(inLayer.map(async (id) => {
-      const delay = 300 + Math.random() * 600;
+      const delay = MOCK_EXECUTION_MIN_DELAY_MS + Math.random() * (MOCK_EXECUTION_MAX_DELAY_MS - MOCK_EXECUTION_MIN_DELAY_MS);
       await new Promise(r => setTimeout(r, delay));
       // 5% error chance
-      if (Math.random() < 0.05) {
+      if (Math.random() < MOCK_ERROR_RATE) {
         const messages = ["Connection reset by peer", "Schema mismatch on column 'value'", "Timeout after 5000ms", "Unexpected null in required field"];
         const msg = messages[Math.floor(Math.random() * messages.length)];
         store.setRuntime(id, { status: "error", error: msg });

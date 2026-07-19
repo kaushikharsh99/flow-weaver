@@ -4,7 +4,14 @@ import { addEdge, applyEdgeChanges, applyNodeChanges } from "reactflow";
 import type { EdgeChange, NodeChange, Connection } from "reactflow";
 import { NODE_TYPE_MAP } from "./nodeTypes";
 import type { NodeRuntime, NodeStatus, MockPreview } from "./types";
-
+import { api } from '../api';
+import type { Pipeline as ApiPipeline, PipelineNode as ApiPipelineNode, PipelineEdge as ApiPipelineEdge } from '../api/types';
+import {
+  SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
+  GRID_SIZE, COMMENT_NODE_DEFAULT_WIDTH, COMMENT_NODE_DEFAULT_HEIGHT,
+  HISTORY_MAX_SIZE, PIPELINE_SCHEMA_URL, PIPELINE_FORMAT_VERSION,
+  NODE_PASTE_OFFSET, MAX_RECENT_NODE_TYPES,
+} from './constants';
 export interface PipelineNodeData {
   typeId: string;
   title: string;
@@ -48,6 +55,8 @@ interface PipelineStore {
   selectedIds: string[];
   ui: UIState;
   running: boolean;
+  projectId: string | null;
+  pipelineId: string | null;
   clipboard: PipelineNode[];
   history: HistorySnapshot[];
   future: HistorySnapshot[];
@@ -105,6 +114,11 @@ interface PipelineStore {
   // save/load
   exportJSON: () => string;
   importJSON: (json: string) => void;
+
+  // persistence (async, via API)
+  savePipelineToServer: () => Promise<void>;
+  loadPipelineFromServer: (pipelineId: string) => Promise<void>;
+  createNewPipeline: (name?: string) => Promise<void>;
 }
 
 const genId = () => Math.random().toString(36).slice(2, 10);
@@ -116,7 +130,7 @@ const makeTab = (name = "Untitled Pipeline"): Tab => ({
   edges: [],
 });
 
-function snap(v: number, grid = 15) { return Math.round(v / grid) * grid; }
+function snap(v: number, grid = GRID_SIZE) { return Math.round(v / grid) * grid; }
 
 export const useStore = create<PipelineStore>((set, get) => {
   const firstTab = makeTab("My Pipeline");
@@ -125,7 +139,7 @@ export const useStore = create<PipelineStore>((set, get) => {
     activeTabId: firstTab.id,
     selectedIds: [],
     ui: {
-      sidebarWidth: 280,
+      sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
       sidebarCollapsed: false,
       inspectorOpen: true,
       snapToGrid: false,
@@ -134,6 +148,8 @@ export const useStore = create<PipelineStore>((set, get) => {
       recentNodeTypeIds: [],
     },
     running: false,
+    projectId: null,
+    pipelineId: null,
     clipboard: [],
     history: [],
     future: [],
@@ -207,7 +223,7 @@ export const useStore = create<PipelineStore>((set, get) => {
           params: {},
           runtime: { status: "idle" },
           comment: "Double-click to edit…",
-          width: 220, height: 120,
+          width: COMMENT_NODE_DEFAULT_WIDTH, height: COMMENT_NODE_DEFAULT_HEIGHT,
         },
       };
       set(state => ({
@@ -275,7 +291,7 @@ export const useStore = create<PipelineStore>((set, get) => {
       const sel = tab.nodes.filter(n => get().selectedIds.includes(n.id));
       set({ clipboard: JSON.parse(JSON.stringify(sel)) });
     },
-    paste: (offset = { x: 40, y: 40 }) => {
+    paste: (offset = NODE_PASTE_OFFSET) => {
       const cb = get().clipboard;
       if (!cb.length) return;
       get().pushHistory();
@@ -365,7 +381,7 @@ export const useStore = create<PipelineStore>((set, get) => {
     },
     setRunning: (v) => set({ running: v }),
 
-    setSidebarWidth: (w) => set(state => ({ ui: { ...state.ui, sidebarWidth: Math.max(56, Math.min(500, w)) } })),
+    setSidebarWidth: (w) => set(state => ({ ui: { ...state.ui, sidebarWidth: Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w)) } })),
     toggleSidebar: () => set(state => ({ ui: { ...state.ui, sidebarCollapsed: !state.ui.sidebarCollapsed } })),
     setInspectorOpen: (v) => set(state => ({ ui: { ...state.ui, inspectorOpen: v } })),
     setSnapToGrid: (v) => set(state => ({ ui: { ...state.ui, snapToGrid: v } })),
@@ -373,7 +389,7 @@ export const useStore = create<PipelineStore>((set, get) => {
     setPaletteOpen: (v) => set(state => ({ ui: { ...state.ui, paletteOpen: v } })),
     pushRecentNodeType: (id) => set(state => {
       const filtered = state.ui.recentNodeTypeIds.filter(x => x !== id);
-      return { ui: { ...state.ui, recentNodeTypeIds: [id, ...filtered].slice(0, 8) } };
+      return { ui: { ...state.ui, recentNodeTypeIds: [id, ...filtered].slice(0, MAX_RECENT_NODE_TYPES) } };
     }),
 
     addTab: () => {
@@ -400,7 +416,7 @@ export const useStore = create<PipelineStore>((set, get) => {
         nodes: JSON.parse(JSON.stringify(tab.nodes)),
         edges: JSON.parse(JSON.stringify(tab.edges)),
       };
-      set(state => ({ history: [...state.history, snap].slice(-50), future: [] }));
+      set(state => ({ history: [...state.history, snap].slice(-HISTORY_MAX_SIZE), future: [] }));
     },
     undo: () => {
       const hist = get().history;
@@ -432,27 +448,142 @@ export const useStore = create<PipelineStore>((set, get) => {
     exportJSON: () => {
       const tab = get().activeTab();
       return JSON.stringify({
+        $schema: PIPELINE_SCHEMA_URL,
+        version: PIPELINE_FORMAT_VERSION,
+        id: get().pipelineId || genId(),
         name: tab.name,
+        description: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         nodes: tab.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: {
           typeId: n.data.typeId, title: n.data.title, params: n.data.params, collapsed: n.data.collapsed,
           disabled: n.data.disabled, colorLabel: n.data.colorLabel, comment: n.data.comment,
           width: n.data.width, height: n.data.height,
         }})),
         edges: tab.edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })),
+        variables: {},
+        settings: {},
+        viewport: { x: 0, y: 0, zoom: 1 },
       }, null, 2);
     },
     importJSON: (json) => {
       const data = JSON.parse(json);
-      if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error("Malformed pipeline file");
+      if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error('Malformed pipeline file');
       get().pushHistory();
       const nodes: PipelineNode[] = data.nodes.map((n: any) => ({
-        id: n.id, type: n.type || "pipelineNode", position: n.position,
-        data: { ...n.data, runtime: { status: "idle" as NodeStatus } },
+        id: n.id, type: n.type || 'pipelineNode', position: n.position,
+        data: { ...n.data, runtime: { status: 'idle' as NodeStatus } },
       }));
-      const edges: Edge[] = data.edges.map((e: any) => ({ ...e, type: "smoothstep" }));
+      const edges: Edge[] = data.edges.map((e: any) => ({ ...e, type: 'smoothstep' }));
       set(state => ({
         tabs: state.tabs.map(t => t.id === state.activeTabId ? { ...t, name: data.name || t.name, nodes, edges } : t),
+        pipelineId: data.id || null,
         selectedIds: [],
+      }));
+    },
+
+    savePipelineToServer: async () => {
+      const tab = get().activeTab();
+      const pipelineId = get().pipelineId;
+      const projectId = get().projectId;
+      
+      const pipelineData = {
+        name: tab.name,
+        nodes: tab.nodes.map(n => ({
+          id: n.id,
+          type: n.type as 'pipelineNode' | 'commentNode',
+          position: n.position,
+          data: {
+            typeId: n.data.typeId,
+            title: n.data.title,
+            params: n.data.params,
+            collapsed: n.data.collapsed,
+            disabled: n.data.disabled,
+            colorLabel: n.data.colorLabel,
+            comment: n.data.comment,
+            width: n.data.width,
+            height: n.data.height,
+          },
+        })),
+        edges: tab.edges.map(e => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle || '',
+          targetHandle: e.targetHandle || '',
+        })),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      };
+
+      if (pipelineId) {
+        await api.updatePipeline(pipelineId, pipelineData);
+      } else {
+        // Auto-create project if needed
+        let pid = projectId;
+        if (!pid) {
+          const { data: projects } = await api.listProjects();
+          if (projects.length > 0) {
+            pid = projects[0].id;
+          } else {
+            const { data: proj } = await api.createProject({ name: 'My Projects' });
+            pid = proj.id;
+          }
+          set({ projectId: pid });
+        }
+        const { data: created } = await api.createPipeline(pid!, {
+          ...pipelineData,
+        });
+        set({ pipelineId: created.id });
+      }
+    },
+
+    loadPipelineFromServer: async (pipelineId) => {
+      const { data: pipeline } = await api.getPipeline(pipelineId);
+      get().pushHistory();
+      const nodes: PipelineNode[] = pipeline.nodes.map((n: any) => ({
+        id: n.id,
+        type: n.type || 'pipelineNode',
+        position: n.position,
+        data: { ...n.data, runtime: { status: 'idle' as NodeStatus } },
+      }));
+      const edges: Edge[] = pipeline.edges.map((e: any) => ({ ...e, type: 'smoothstep' }));
+      set(state => ({
+        tabs: state.tabs.map(t => t.id === state.activeTabId
+          ? { ...t, name: pipeline.name, nodes, edges }
+          : t),
+        pipelineId: pipeline.id,
+        projectId: pipeline.projectId,
+        selectedIds: [],
+      }));
+    },
+
+    createNewPipeline: async (name) => {
+      let pid = get().projectId;
+      if (!pid) {
+        const { data: projects } = await api.listProjects();
+        pid = projects.length > 0 ? projects[0].id : null;
+        if (!pid) {
+          const { data: proj } = await api.createProject({ name: 'My Projects' });
+          pid = proj.id;
+        }
+        set({ projectId: pid });
+      }
+      const { data: created } = await api.createPipeline(pid!, {
+        name: name || `Pipeline ${get().tabs.length + 1}`,
+      });
+      const newTab: Tab = {
+        id: genId(),
+        name: created.name,
+        nodes: [],
+        edges: [],
+      };
+      set(state => ({
+        tabs: [...state.tabs, newTab],
+        activeTabId: newTab.id,
+        pipelineId: created.id,
+        selectedIds: [],
+        history: [],
+        future: [],
       }));
     },
   };
