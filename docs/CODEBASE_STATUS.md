@@ -44,7 +44,15 @@ flow-weaver/
 │       │   └── ...
 │       ├── package.json
 │       └── vite.config.ts
-├── packages/                # Shared packages (future)
+├── packages/                # Shared packages
+│   └── flowweaver_sdk/      # Core Python Developer SDK
+│       ├── flowweaver/sdk/
+│       │   ├── __init__.py
+│       │   ├── artifact.py  # Artifact models
+│       │   ├── context.py   # ExecutionContext, Logger, Metrics
+│       │   ├── dataset.py   # Dataset & TabularDataset abstractions
+│       │   └── node.py      # Base Node, Port, Parameter definitions
+│       └── setup.py
 ├── plugins/                 # Dynamic plugins/nodes (future)
 ├── package.json             # Root monorepo workspace configuration
 ├── tsconfig.json            # Root tsconfig path mapping
@@ -97,3 +105,14 @@ FlowWeaver compiles visual pipelines prior to running them:
 3. **Graph Optimizer** (`optimizer.py`): Evaluates caching rules, checkpoint states, and disabled tasks.
 4. **Execution Planner** (`planner.py`): Organizes execution into sequential stages, separating concurrent tasks.
 5. **DAG Executor** (`runner.py`): Consumes plan stages and executes tasks, streaming logs and updates via WebSockets.
+
+---
+
+## 7. Core Developer SDK (`packages/flowweaver_sdk`)
+
+The SDK separates the platform backend from individual node logic:
+
+- **Dataset Abstraction** (`dataset.py`): Wraps tabular data representation inside `Dataset` and `TabularDataset` interfaces. Prevents coupling nodes with specific structures (e.g. Polars, Arrow, list-of-dicts) by exposing a unified `.to_list()` and `.columns()` protocol.
+- **Base Node Class** (`node.py`): Defines developer interface models `Node`, `Port`, and `Parameter` utilizing Pydantic constraints.
+- **Execution Context** (`context.py`): Wraps runtime services inside `ExecutionContext` including `Logger` tracking logs, and `Metrics` (automatically calculating execution duration milliseconds).
+- **Artifact System** (`artifact.py`): Declares structural models representing execution assets (datasets, files, or custom JSON structures).

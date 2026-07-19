@@ -47,3 +47,13 @@ This document records the exact milestones, phases, and files implemented during
 ### Setup, Run & Ignore Utilities
 - Created `run.py` at the project root to automate virtual environment setups, install backend Python dependencies, install npm workspaces, and run frontend and backend servers concurrently.
 - Configured python gitignores for `.pyc`, `venv/`, and `__pycache__` to keep commits clean.
+
+### Milestone 2 — Core SDK & Dataset Abstraction
+- Created the **Python Developer SDK** in `packages/flowweaver_sdk/flowweaver/sdk`:
+  - `node.py`: Declarations for base `Node`, `Port`, and `Parameter`.
+  - `dataset.py`: Memory-efficient `Dataset` abstraction and `TabularDataset` implementation.
+  - `context.py`: `ExecutionContext` tracking logger strings and `Metrics` runtimes (ms).
+  - `artifact.py`: Pydantic structural model for tracking pipeline assets.
+- Installed `flowweaver-sdk` inside the backend `venv` (under editable `-e` flag).
+- Refactored `apps/api/app/engine/nodes/` to import from SDK and return `Dataset` instances.
+- Updated `runner.py` to compile nodes using the SDK node signature and serialize tabular dataset previews KNIME-style to render edge statistics on the frontend.
