@@ -23,8 +23,8 @@ flow-weaver/
 │   │   │   │   ├── nodes/   # Individual Python Node Implementations
 │   │   │   │   ├── base.py
 │   │   │   │   ├── registry.py  # Standard registry + local dynamic plugin loader
-│   │   │   │   └── runner.py
-│   │   │   ├── routes/      # REST API Routers & WS Channels
+│   │   │   │   └── runner.py    # Sequential DAG executor supporting breakpoints & profiling metrics
+│   │   │   ├── routes/      # REST API Routers & WS Channels (executions.py exposes pause/resume)
 │   │   │   ├── db.py        # SQLAlchemy context setup
 │   │   │   ├── models.py    # Database models (SQLite/Postgres)
 │   │   │   └── schemas.py   # Pydantic schemas
@@ -126,3 +126,16 @@ The SDK separates the platform backend from individual node logic:
 - **Base Node Class** (`node.py`): Defines developer interface models `Node`, `Port`, and `Parameter` utilizing Pydantic constraints.
 - **Execution Context** (`context.py`): Wraps runtime services inside `ExecutionContext` including `Logger` tracking logs, and `Metrics` (automatically calculating execution duration milliseconds).
 - **Artifact System** (`artifact.py`): Declares structural models representing execution assets (datasets, files, or custom JSON structures).
+
+---
+
+## 8. Enterprise Debugger & Profiler
+
+FlowWeaver implements full debugger breakpoint pauses and resource execution profiling:
+
+- **Debugger Breakpoint Pauses** (`runner.py` / `executions.py`): If a node contains `__breakpoint__ = True` (or execution status is paused), the background execution thread blocks using a `threading.Event` primitive. Rest routes `/api/executions/{id}/resume` and `/api/executions/{id}/pause` trigger waker signals.
+- **Task Profiler Metrics** (`runner.py`): Computes precise task execution performance profiles:
+  - Timing: tracks precise elapsed execution duration in milliseconds.
+  - Memory: queries resident memory set sizes (RSS) maxrss utilizing Linux `resource` headers to calculate peak RAM allocation bytes.
+  - Throughput: calculates rows processed per second dynamically from dataset row counts.
+  - Preview payloads and metrics are emitted inside the `NODE_UPDATE` WebSocket frames to be mapped by the React client.
