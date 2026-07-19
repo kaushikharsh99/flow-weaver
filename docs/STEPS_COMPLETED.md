@@ -73,6 +73,16 @@ This document records the exact milestones, phases, and files implemented during
 
 ### Milestone 5 — Enterprise Debugger & Profiler
 - Developed thread waker Event synchronization in `runner.py` supporting execution pauses at breakpoints (nodes carrying `__breakpoint__ = True`).
-- Implemented REST routes `/api/executions/{id}/resume` and `/api/executions/{id}/pause` in `executions.py` to trigger debugger wake events.
+- Added REST routes `/api/executions/{id}/resume` and `/api/executions/{id}/pause` in `executions.py` to trigger debugger wake events.
 - Added client interface signatures (`types.ts`, `client.ts`, `http-client.ts`, `mock-client.ts`) representing paused states, pause actions, and resume actions.
 - Integrated runtime performance profiling inside `runner.py` calculating task elapsed durations (ms), Peak RAM memory allocations (bytes) utilizing Linux `resource` self RSS headers, and rows/second throughput.
+
+### Developer Lifecycle Control Suite
+- Formulated modular control scripts inside the `scripts/` directory:
+  - `install.py`: Onboarding setup installer configuring virtual environment packages, npm workspace installs, env bindings, and SQLite schema creation.
+  - `run.py`: Concurrently launches FastAPI API server and Vite React client.
+  - `doctor.py`: Runs environment check diagnostics verifying port availability, package imports, database state, Node.js and Python levels.
+  - `test.py`: Smoke testing suite running DAG compilation validation and frontend tsc check compiles.
+  - `clean.py`: Clean compiler pycaches, pytest targets, and build outputs.
+- Rewrote root `run.py` to forward directly to `scripts/run.py`.
+- Configured gitignores to safely untrack and ignore setuptools egg-info folders.

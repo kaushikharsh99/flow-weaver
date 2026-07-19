@@ -58,9 +58,15 @@ flow-weaver/
 │       └── setup.py
 ├── plugins/                 # Local dynamic plugins directory (scanned on boot)
 │   └── text_utils/          # Sample CLI-generated plugin
+├── scripts/                 # Developer Lifecycle Control Suite
+│   ├── clean.py             # Remove compiler and packaging caches
+│   ├── doctor.py            # Environment checklist verification
+│   ├── install.py           # Onboarding setups (venv, npm install, DB schemas)
+│   ├── run.py               # Concurrently starts dev servers
+│   └── test.py              # Smoke test compilation & registry checks
 ├── package.json             # Root monorepo workspace configuration
 ├── tsconfig.json            # Root tsconfig path mapping
-└── run.py                   # Dev server orchestrator script (handles venv/npm setups)
+└── run.py                   # Waker runner entry script (forwards to scripts/run.py)
 ```
 
 ---
@@ -95,9 +101,15 @@ Configured in `apps/api/app/models.py`. Standard tables:
 
 ---
 
-## 5. Dev Orchestration
+## 5. Developer Lifecycle Control Suite (`scripts/`)
 
-To run the full stack concurrently, execute `./run.py` at the root folder. It sets up the python virtual environment, installs dependencies, and runs Vite and Uvicorn.
+Instead of mixing setup tasks during dev servers execution, project lifecycle commands are modularly segregated:
+
+- **`install.py`**: Runs once to perform initial environment setups. Creates the python virtual environment (`venv`), upgrades pip, installs package dependencies, configures `.env`, and initializes SQLite database tables.
+- **`run.py`**: Assumes project setup is complete. Concurrently launches Uvicorn API server and Vite Web client, prefixing stdout streams cleanly (`[API]` / `[WEB]`) and listening for termination interrupts.
+- **`doctor.py`**: Runs diagnostic checklist verifying dependency imports, environment files, free ports, Node/Python levels, and SQLite schema state.
+- **`test.py`**: Execution test suite testing semantic validators, planners, DAG compilers, and checking frontend type safety compiles clean.
+- **`clean.py`**: Deletes `__pycache__` artifacts, `.pytest_cache`, and Vite/setuptools caching build structures.
 
 ---
 
