@@ -1,5 +1,12 @@
 setup.py
+flowweaver/__init__.py
+flowweaver/sdk/__init__.py
+flowweaver/sdk/artifact.py
+flowweaver/sdk/context.py
+flowweaver/sdk/dataset.py
+flowweaver/sdk/node.py
 flowweaver_sdk.egg-info/PKG-INFO
 flowweaver_sdk.egg-info/SOURCES.txt
 flowweaver_sdk.egg-info/dependency_links.txt
+flowweaver_sdk.egg-info/requires.txt
 flowweaver_sdk.egg-info/top_level.txt
