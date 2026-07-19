@@ -57,3 +57,11 @@ This document records the exact milestones, phases, and files implemented during
 - Installed `flowweaver-sdk` inside the backend `venv` (under editable `-e` flag).
 - Refactored `apps/api/app/engine/nodes/` to import from SDK and return `Dataset` instances.
 - Updated `runner.py` to compile nodes using the SDK node signature and serialize tabular dataset previews KNIME-style to render edge statistics on the frontend.
+
+### Milestone 3 — Data Engine (Polars, PyArrow, Streaming Execution)
+- Expanded the `Dataset` abstraction layer inside `flowweaver/sdk/dataset.py`:
+  - Implemented `PolarsDataset` wrapping `polars.DataFrame` natively.
+  - Implemented `ArrowDataset` wrapping `pyarrow.Table` for zero-copy memory operations.
+  - Developed `StreamingDataset` mapping iterator/generator record chunks supporting large-scale file processing (GB/TB scale) under constant, low RAM footprint.
+- Updated setup package configurations (`setup.py`) and virtual environment requirements (`requirements.txt`) to dynamically install and support `polars`, `pyarrow`, and `duckdb` binary wheels on Python 3.13.
+- Created and executed a comprehensive automated dataset test pipeline verifying zero-copy data conversions and generator iterators.

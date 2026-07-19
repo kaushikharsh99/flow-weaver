@@ -46,12 +46,14 @@ flow-weaver/
 │       └── vite.config.ts
 ├── packages/                # Shared packages
 │   └── flowweaver_sdk/      # Core Python Developer SDK
-│       ├── flowweaver/sdk/
+│       ├── flowweaver/
 │       │   ├── __init__.py
-│       │   ├── artifact.py  # Artifact models
-│       │   ├── context.py   # ExecutionContext, Logger, Metrics
-│       │   ├── dataset.py   # Dataset & TabularDataset abstractions
-│       │   └── node.py      # Base Node, Port, Parameter definitions
+│       │   └── sdk/
+│       │       ├── __init__.py
+│       │       ├── artifact.py  # Artifact models
+│       │       ├── context.py   # ExecutionContext, Logger, Metrics
+│       │       ├── dataset.py   # Dataset, TabularDataset, PolarsDataset, ArrowDataset, StreamingDataset
+│       │       └── node.py      # Base Node, Port, Parameter definitions
 │       └── setup.py
 ├── plugins/                 # Dynamic plugins/nodes (future)
 ├── package.json             # Root monorepo workspace configuration
@@ -112,7 +114,11 @@ FlowWeaver compiles visual pipelines prior to running them:
 
 The SDK separates the platform backend from individual node logic:
 
-- **Dataset Abstraction** (`dataset.py`): Wraps tabular data representation inside `Dataset` and `TabularDataset` interfaces. Prevents coupling nodes with specific structures (e.g. Polars, Arrow, list-of-dicts) by exposing a unified `.to_list()` and `.columns()` protocol.
+- **Dataset Abstraction** (`dataset.py`): Exposes multiple underlying engines wrapper implementations:
+  - `TabularDataset`: Memory list of row dictionaries.
+  - `PolarsDataset`: Wraps Polars DataFrame for highly optimized native parallel query operations.
+  - `ArrowDataset`: Wraps PyArrow table representing zero-copy columns.
+  - `StreamingDataset`: Generator-based row/chunk batch iterator supporting large files (GBs/TBs) with low, constant RAM overhead.
 - **Base Node Class** (`node.py`): Defines developer interface models `Node`, `Port`, and `Parameter` utilizing Pydantic constraints.
 - **Execution Context** (`context.py`): Wraps runtime services inside `ExecutionContext` including `Logger` tracking logs, and `Metrics` (automatically calculating execution duration milliseconds).
 - **Artifact System** (`artifact.py`): Declares structural models representing execution assets (datasets, files, or custom JSON structures).
