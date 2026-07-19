@@ -32,6 +32,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+import threading
+from app.db import SessionLocal
+from app.engine.runner import execute_pipeline
+
 @router.post("/pipelines/{pipeline_id}/execute", response_model=Dict[str, Dict[str, Any]], status_code=status.HTTP_202_ACCEPTED)
 def start_execution(pipeline_id: str, db: Session = Depends(get_db)):
     # Verify pipeline exists
@@ -50,8 +54,15 @@ def start_execution(pipeline_id: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(execution)
     
-    # Simple background simulation of execution
-    asyncio.create_task(simulate_pipeline_execution(exec_id, db))
+    # Run the real pipeline execution engine in a background thread
+    def run_in_thread():
+        thread_db = SessionLocal()
+        try:
+            execute_pipeline(exec_id, thread_db, manager)
+        finally:
+            thread_db.close()
+            
+    threading.Thread(target=run_in_thread, daemon=True).start()
     
     return {
         "data": {
