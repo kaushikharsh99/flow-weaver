@@ -15,7 +15,38 @@ from flowweaver.sdk import TabularDataset, PolarsDataset, Dataset
 # Loaders
 # ---------------------------------------------------------------------------
 
+def load_json_file(file_path: str, root_key: str = "", **kwargs) -> Dataset:
+    """Reads a JSON file into a TabularDataset."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        if root_key and root_key in data and isinstance(data[root_key], list):
+            data = data[root_key]
+        else:
+            for k in ("data", "items", "records", "stories", "train", "documents"):
+                if k in data and isinstance(data[k], list):
+                    data = data[k]
+                    break
+    if not isinstance(data, list):
+        data = [data]
+    columns = list(data[0].keys()) if data and isinstance(data[0], dict) else []
+    return TabularDataset(data, columns=columns)
+
+
+def load_csv_file(file_path: str, delimiter: str = ",", **kwargs) -> Dataset:
+    """Reads a CSV file into a TabularDataset."""
+    import csv
+    rows = []
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        for r in reader:
+            rows.append(dict(r))
+    columns = list(rows[0].keys()) if rows else []
+    return TabularDataset(rows, columns=columns)
+
+
 def load_jsonl_file(file_path: str) -> Dataset:
+
     """Reads a JSON Lines file into a TabularDataset."""
     rows = []
     with open(file_path, "r", encoding="utf-8") as f:
@@ -352,27 +383,67 @@ def rename_dataset_columns(dataset: Dataset, rename_map: Dict[str, str]) -> Data
     return TabularDataset(renamed_rows, columns=new_cols)
 
 
-# ---------------------------------------------------------------------------
-# Exports
-# ---------------------------------------------------------------------------
-
-def write_jsonl_file(dataset: Dataset, file_path: str):
-    """Serializes dataset records into a JSON Lines document."""
-    os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
-        for r in dataset.to_list():
-            f.write(json.dumps(r) + "\n")
-
-
-def write_parquet_file(dataset: Dataset, file_path: str):
-    """Serializes dataset records into a Parquet binary document using Polars."""
-    import polars as pl
-    os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-    df = pl.DataFrame(dataset.to_list())
-    df.write_parquet(file_path)
-
-
 def upload_hf_hub_dataset(dataset: Dataset, repo_id: str, split: str = "train") -> str:
     """Simulates or uploads dataset records to Hugging Face dataset registry."""
     # Simulation logic returns a simulated repository URL link
     return f"https://huggingface.co/datasets/{repo_id}/viewer/{split}"
+
+
+def write_csv_file(dataset: Dataset, path: str, **kwargs):
+    """Serializes dataset records into a CSV document."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    rows = dataset.to_list()
+    if not rows:
+        return
+    import csv
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_jsonl_file(dataset: Dataset, path: str, **kwargs):
+    """Serializes dataset records into a JSON Lines document."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in dataset.to_list():
+            f.write(json.dumps(r) + "\n")
+
+
+def write_parquet_file(dataset: Dataset, path: str, **kwargs):
+    """Serializes dataset records into a Parquet binary document using Polars."""
+    import polars as pl
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    df = pl.DataFrame(dataset.to_list())
+    df.write_parquet(path)
+
+
+
+
+# ---------------------------------------------------------------------------
+# Operation Function Aliases for Compiled Scripts
+# ---------------------------------------------------------------------------
+
+def import_dataset(path: str, **kwargs) -> Dataset:
+    """Universal Intelligent Import Engine wrapper for compiled Python scripts."""
+    if path.endswith(".json"):
+        return load_json_file(path, **kwargs)
+    elif path.endswith(".jsonl"):
+        return load_jsonl_file(path)
+    elif path.endswith(".parquet"):
+        return load_parquet_file(path)
+    else:
+        return load_csv_file(path, **kwargs)
+
+
+
+unicode_normalize = unicode_normalize_text
+lowercase = lowercase_text_column
+strip_html = strip_html_tags
+regex_replace = regex_replace_text
+remove_empty = remove_empty_records
+length_filter = filter_by_text_length
+write_csv = write_csv_file
+write_jsonl = write_jsonl_file
+write_parquet = write_parquet_file
+

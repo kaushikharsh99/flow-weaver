@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import {
-  Play, Square, Undo2, Redo2, Save, Upload, X, Plus, Sun, Moon, Command as CommandIcon, Grid3x3, Zap,
+  Play, Square, Undo2, Redo2, Save, Upload, X, Plus, Sun, Moon, Command as CommandIcon, Grid3x3, Zap, Code2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { useStore } from "../store";
 import { runPipeline } from "../runner";
 import { cn } from "@/lib/utils";
+import { CompileViewerModal } from "./CompileViewerModal";
 
 export function Toolbar() {
   const tabs = useStore(s => s.tabs);
@@ -32,6 +33,9 @@ export function Toolbar() {
   const activeTab = tabs.find(t => t.id === activeId)!;
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(activeTab.name);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compiledScript, setCompiledScript] = useState("");
+  const [compileModalOpen, setCompileModalOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
@@ -58,6 +62,32 @@ export function Toolbar() {
     if (running) { setRunning(false); toast("Run stopped"); return; }
     await runPipeline();
   };
+
+  const handleCompile = async () => {
+    setIsCompiling(true);
+    try {
+      const jsonStr = exportJSON();
+      const pipelineObj = JSON.parse(jsonStr);
+      const res = await fetch("http://localhost:8000/api/compiler/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipeline: pipelineObj })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCompiledScript(data.script);
+        setCompileModalOpen(true);
+        toast.success("Pipeline successfully compiled to Python!");
+      } else {
+        toast.error(data.errors?.[0] || "Compilation failed");
+      }
+    } catch (err: any) {
+      toast.error("Failed to connect to compiler backend service");
+    } finally {
+      setIsCompiling(false);
+    }
+  };
+
 
   return (
     <div className="h-12 flex-shrink-0 flex items-center border-b border-white/10 bg-white/[0.03] backdrop-blur-xl px-3 gap-2">
@@ -190,6 +220,16 @@ export function Toolbar() {
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.96 }}
+        onClick={handleCompile}
+        disabled={isCompiling}
+        className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-purple-600/90 hover:bg-purple-600 text-white shadow-[0_0_20px] shadow-purple-500/30 disabled:opacity-50"
+      >
+        <Code2 size={12} /> {isCompiling ? "Compiling..." : "Compile"}
+      </motion.button>
+
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.96 }}
         onClick={handleRun}
         className={cn(
           "ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium",
@@ -200,6 +240,14 @@ export function Toolbar() {
       >
         {running ? <><Square size={12} /> Stop</> : <><Play size={12} /> Run</>}
       </motion.button>
+
+      <CompileViewerModal
+        isOpen={compileModalOpen}
+        onClose={() => setCompileModalOpen(false)}
+        script={compiledScript}
+        pipelineName={activeTab.name}
+      />
     </div>
   );
 }
+

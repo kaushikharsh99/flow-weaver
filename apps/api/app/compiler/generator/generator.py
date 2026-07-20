@@ -1,5 +1,7 @@
 from typing import Dict, Any, List
-from app.compiler.ir import PipelineIR, IROperation, IRCall, IRConstant
+from app.compiler.ir import PipelineIR, IROperation, IRCall, IRConstant, IRVariable
+
+
 from app.compiler.generator.builder import CodeBuilder
 from app.compiler.generator.formatter import Formatter
 from app.compiler.templates import get_header, get_footer
@@ -70,14 +72,14 @@ class PythonGenerator:
             return repr(expr)
 
     def _format_value(self, val: Any) -> str:
-        if isinstance(val, IRCall):
+        if isinstance(val, IRVariable):
+            return val.name
+        elif isinstance(val, IRCall):
             return self._format_expression(val)
         elif isinstance(val, IRConstant):
             return repr(val.value)
-        elif isinstance(val, str) and (val.startswith("dataset") or val.isidentifier()):
-            # Variable reference vs string literal
-            if val in ("True", "False", "None"):
-                return val
-            return repr(val)
+        elif isinstance(val, str) and (val == "dataset" or val.startswith("dataset_")):
+            return val
         else:
             return repr(val)
+
