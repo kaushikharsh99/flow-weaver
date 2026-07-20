@@ -12,7 +12,7 @@ class LowercaseNode(Node):
 
     def compile(self, ctx: Any) -> Any:
         col = ctx.current_params.get("column", "text")
-        return ctx.call("flowweaver.std.text.lowercase", ctx.input_var, column=col)
+        return ctx.dataset().lowercase(column=col)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")
@@ -29,7 +29,7 @@ class StripHTMLNode(Node):
 
     def compile(self, ctx: Any) -> Any:
         col = ctx.current_params.get("column", "text")
-        return ctx.call("flowweaver.std.text.regex_replace", ctx.input_var, column=col, pattern=r"<[^>]*>", replacement="")
+        return ctx.dataset().regex_replace(column=col, pattern=r"<[^>]*>", replacement="")
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")
@@ -47,7 +47,7 @@ class RemoveEmptyNode(Node):
     def compile(self, ctx: Any) -> Any:
         cols_str = ctx.current_params.get("columns", "text")
         first_col = [c.strip() for c in cols_str.split(",") if c.strip()][0] if cols_str else "text"
-        return ctx.call("flowweaver.std.tabular.filter_rows", ctx.input_var, column=first_col, operator="not_null", value="")
+        return ctx.dataset().filter_rows(column=first_col, operator="not_null", value="")
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")
@@ -72,7 +72,8 @@ class UnicodeNormalizeNode(Node):
     def compile(self, ctx: Any) -> Any:
         col = ctx.current_params.get("column", "text")
         form = ctx.current_params.get("form", "NFC")
-        return ctx.call("flowweaver.std.text.unicode_normalize", ctx.input_var, column=col, form=form)
+        return ctx.dataset().unicode_normalize(column=col, form=form)
+
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")

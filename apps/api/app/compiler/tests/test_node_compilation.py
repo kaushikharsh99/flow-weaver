@@ -15,38 +15,34 @@ from app.engine.nodes.transform import RenameColumnsNode, SelectColumnsNode
 from app.engine.nodes.filters import FilterRowsNode, DedupNode
 
 
+from app.compiler.context import CompilerContext
+
+
 def test_node_compile_methods_directly():
-    class DummyContext:
-        def __init__(self):
-            self.input_var = "dataset"
-            self.output_var = "dataset_1"
-            self.current_params = {"column": "title", "form": "NFKC"}
-            self.imports = set()
-
-        def call(self, func_path, *args, **kwargs):
-            self.imports.add(func_path)
-            return {"func": func_path, "args": args, "kwargs": kwargs}
-
-    ctx = DummyContext()
+    ctx = CompilerContext()
+    ctx.input_var = "dataset"
+    ctx.output_var = "dataset_1"
+    ctx.current_params = {"column": "title", "form": "NFKC"}
 
     # LowercaseNode compile
     node_lower = LowercaseNode()
     ir_lower = node_lower.compile(ctx)
-    assert ir_lower["func"] == "flowweaver.std.text.lowercase"
-    assert ir_lower["kwargs"]["column"] == "title"
+    assert ir_lower.function == "lowercase"
+    assert ir_lower.kwargs["column"] == "title"
 
     # UnicodeNormalizeNode compile
     node_uni = UnicodeNormalizeNode()
     ir_uni = node_uni.compile(ctx)
-    assert ir_uni["func"] == "flowweaver.std.text.unicode_normalize"
-    assert ir_uni["kwargs"]["form"] == "NFKC"
+    assert ir_uni.function == "unicode_normalize"
+    assert ir_uni.kwargs["form"] == "NFKC"
 
     # SelectColumnsNode compile
     ctx.current_params = {"columns": "id, title"}
     node_sel = SelectColumnsNode()
     ir_sel = node_sel.compile(ctx)
-    assert ir_sel["func"] == "flowweaver.std.tabular.select_columns"
-    assert ir_sel["kwargs"]["columns"] == ["id", "title"]
+    assert ir_sel.function == "select_columns"
+    assert ir_sel.kwargs["columns"] == ["id", "title"]
+
 
 
 def test_node_migration_end_to_end_compilation_and_execution():
