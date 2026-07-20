@@ -36,8 +36,8 @@ class DatasetRef:
     def unicode_normalize(self, column: str, form: str = "NFC") -> IRCall:
         return self.call("flowweaver.std.text.unicode_normalize", column=column, form=form)
 
-    def strip_whitespace(self, column: str) -> IRCall:
-        return self.call("flowweaver.std.text.strip_whitespace", column=column)
+    def strip_whitespace(self, column: str, collapse: bool = False) -> IRCall:
+        return self.call("flowweaver.std.text.strip_whitespace", column=column, collapse=collapse)
 
     def regex_replace(self, column: str, pattern: str, replacement: str) -> IRCall:
         return self.call("flowweaver.std.text.regex_replace", column=column, pattern=pattern, replacement=replacement)
