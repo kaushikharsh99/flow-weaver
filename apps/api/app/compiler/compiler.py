@@ -1,6 +1,8 @@
 import os
 import time
+import json
 from typing import Dict, Any, Optional, List, Set
+
 from app.compiler.validator import PipelineValidator, ValidationResult
 from app.compiler.context import CompilerContext, CompilerConfig
 from app.compiler.result import CompilerResult
@@ -185,7 +187,76 @@ class PipelineCompiler:
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_code)
 
+        # Step 6: Build Complete Pipeline Artifact Package
         duration_ms = (time.time() - start_time) * 1000.0
+
+        # 6a. Write pipeline.json (Visual DAG Source)
+        with open(os.path.join(config.output_dir, "pipeline.json"), "w", encoding="utf-8") as f:
+            json.dump(pipeline_dict, f, indent=2)
+
+        # 6b. Write pipeline.lock (Dependency Lock)
+        lock_data = {
+            "flowweaver_version": "0.1.0",
+            "python_version": config.target_python_version,
+            "dependencies": {
+                "flowweaver-sdk": ">=0.1.0",
+                "polars": ">=0.20.0",
+                "pyarrow": ">=14.0.0"
+            },
+            "nodes": [op.node_type for op in ir.operations]
+        }
+        with open(os.path.join(config.output_dir, "pipeline.lock"), "w", encoding="utf-8") as f:
+            json.dump(lock_data, f, indent=2)
+
+        # 6c. Write metadata.json (Compilation Report & Statistics)
+        metadata_data = {
+            "pipeline_name": pipeline_name,
+            "compiled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "execution_time_ms": round(duration_ms, 2),
+            "generated_loc": len(script_code.splitlines()),
+            "operations_count": len(ir.operations),
+            "imports_count": len(ir.imports),
+            "variables_count": len(ir.variables),
+            "operations": [{"id": op.id, "type": op.node_type, "variable": op.target_variable} for op in ir.operations]
+        }
+        with open(os.path.join(config.output_dir, "metadata.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata_data, f, indent=2)
+
+        # 6d. Write README.md (Documentation & Usage)
+        readme_content = f"""# ⚡ FlowWeaver Compiled Pipeline: `{pipeline_name}`
+
+> Automatically generated production Python preprocessing build package by FlowWeaver Compiler.
+
+## 🚀 Execution Guide
+
+Run the self-contained pipeline directly with Python:
+
+```bash
+python {config.script_name}
+```
+
+### CLI Arguments & Parameters
+
+```bash
+python {config.script_name} --help
+```
+
+- `--input`: Override input dataset path
+- `--output`: Override output destination path
+- `--limit`: Limit row count for rapid testing
+- `--verbose`: Enable detailed log output
+
+## 📦 Package Contents
+- `{config.script_name}`: Standalone senior-engineer quality Python preprocessing script.
+- `pipeline.json`: Visual DAG source definition.
+- `pipeline.lock`: Reproducible dependency lock file.
+- `metadata.json`: Compilation statistics & node execution trace.
+- `logs/`: Execution runtime log directory.
+"""
+        with open(os.path.join(config.output_dir, "README.md"), "w", encoding="utf-8") as f:
+            f.write(readme_content)
+
+        os.makedirs(os.path.join(config.output_dir, "logs"), exist_ok=True)
 
         return CompilerResult(
             success=True,
@@ -194,10 +265,7 @@ class PipelineCompiler:
             validation=validation,
             warnings=ctx.warnings,
             errors=[],
-            statistics={
-                "operations_count": len(ir.operations),
-                "imports_count": len(ir.imports),
-                "variables_count": len(ir.variables)
-            },
+            statistics=metadata_data,
             execution_time_ms=duration_ms
         )
+

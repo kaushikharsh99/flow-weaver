@@ -1,0 +1,31 @@
+{
+  "pipeline_name": "official_tinystories_pipeline",
+  "compiled_at": "2026-07-20T05:29:50Z",
+  "execution_time_ms": 0.55,
+  "generated_loc": 17,
+  "operations_count": 4,
+  "imports_count": 2,
+  "variables_count": 4,
+  "operations": [
+    {
+      "id": "import_1",
+      "type": "import_dataset",
+      "variable": "raw_dataset"
+    },
+    {
+      "id": "unicode_1",
+      "type": "unicode_normalize",
+      "variable": "normalized_dataset"
+    },
+    {
+      "id": "clean_1",
+      "type": "regex_replace",
+      "variable": "cleaned_dataset"
+    },
+    {
+      "id": "export_1",
+      "type": "write_jsonl",
+      "variable": "processed_dataset"
+    }
+  ]
+}
