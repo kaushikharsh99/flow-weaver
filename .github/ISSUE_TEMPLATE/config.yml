@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Flow Weaver Documentation
+    url: https://github.com/kaushikharsh99/flow-weaver/blob/main/docs/CONTRIBUTING.md
+    about: Read the contributing guidelines before opening an issue.
