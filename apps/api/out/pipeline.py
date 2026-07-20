@@ -1,37 +1,445 @@
 """
 FlowWeaver Generated Preprocessing Script
-Pipeline: 72p6ysmj
-Generated: 2026-07-20 06:08:57 UTC
+Pipeline: 6na68unh
+Generated: 2026-07-20 07:04:48 UTC
 
 This script was compiled from a visual FlowWeaver pipeline.
-It is fully standalone and can be run with: python 72p6ysmj.py
+It is fully standalone and can be run with: python 6na68unh.py
 """
 
 
-from flowweaver.std.io import import_dataset, export_csv
-from flowweaver.std.tabular import sample_rows
-from flowweaver.std.dedup import dedup_exact
+import argparse
+import logging
+import time
+
+import abc
+import csv
+import json
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterator, List, Optional
+
+# ======================================================
+# Core Dataset Engineering Classes
+# ======================================================
+@dataclass
+class ColumnSchema:
+    """Represents the schema definition of a dataset column."""
+    name: str
+    data_type: str = 'string'
+    nullable: bool = True
+
+@dataclass
+class DatasetSchema:
+    """Represents the overall schema of a Dataset."""
+    columns: List[ColumnSchema] = field(default_factory=list)
+
+    @classmethod
+    def infer_from_records(cls, records: List[Dict[str, Any]]) -> 'DatasetSchema':
+        if not records:
+            return cls()
+        cols = []
+        sample_row = records[0]
+        for name, val in sample_row.items():
+            dtype = 'string'
+            if isinstance(val, bool):
+                dtype = 'boolean'
+            elif isinstance(val, int):
+                dtype = 'integer'
+            elif isinstance(val, float):
+                dtype = 'float'
+            elif isinstance(val, (list, tuple)):
+                dtype = 'array'
+            elif isinstance(val, dict):
+                dtype = 'struct'
+            cols.append(ColumnSchema(name=name, data_type=dtype, nullable=val is None))
+        return cls(columns=cols)
+
+    def names(self) -> List[str]:
+        return [c.name for c in self.columns]
+
+@dataclass
+class DatasetMetadata:
+    """Stores metadata information for a Dataset instance."""
+    rows: Optional[int] = None
+    columns: int = 0
+    memory_bytes: Optional[int] = None
+    source: Optional[str] = None
+    encoding: str = 'utf-8'
+    created_at: float = field(default_factory=time.time)
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class OperationRecord:
+    """Record of an operation executed on a dataset."""
+    name: str
+    timestamp: float = field(default_factory=time.time)
+    parameters: Dict[str, Any] = field(default_factory=dict)
+
+class Dataset(abc.ABC):
+    """Core FlowWeaver immutable Dataset abstraction.
+    
+    Wraps tabular dicts, Polars DataFrames, or PyArrow Tables while maintaining
+    Schema, Metadata, and Operation History tracking.
+    """
+
+    def __init__(self, metadata: Optional[DatasetMetadata]=None, schema: Optional[DatasetSchema]=None, history: Optional[List[OperationRecord]]=None):
+        self._metadata = metadata or DatasetMetadata()
+        self._schema = schema or DatasetSchema()
+        self._history = list(history) if history else []
+
+    @property
+    def metadata(self) -> DatasetMetadata:
+        return self._metadata
+
+    @property
+    def schema(self) -> DatasetSchema:
+        return self._schema
+
+    @property
+    def history(self) -> List[OperationRecord]:
+        return list(self._history)
+
+    @abc.abstractmethod
+    def to_list(self) -> List[Dict[str, Any]]:
+        """Convert dataset to list of dicts (tabular)."""
+        pass
+
+    @abc.abstractmethod
+    def columns(self) -> List[str]:
+        """Return list of dataset columns."""
+        pass
+
+    @abc.abstractmethod
+    def row_count(self) -> Optional[int]:
+        """Return number of rows if known, or None."""
+        pass
+
+    def preview(self, limit: int=5) -> Dict[str, Any]:
+        """Returns structured preview payload including sample rows, schema, and metadata."""
+        records = self.to_list()
+        sample = records[:limit]
+        return {'rows': sample, 'columns': self.columns(), 'schema': [c.__dict__ for c in self.schema.columns], 'row_count': len(records), 'metadata': self.metadata.__dict__, 'history': [h.__dict__ for h in self.history]}
+
+    def statistics(self) -> Dict[str, Any]:
+        """Computes summary statistics for dataset columns."""
+        records = self.to_list()
+        cols = self.columns()
+        null_counts = self.nulls()
+        return {'row_count': len(records), 'column_count': len(cols), 'memory_bytes': self.memory(), 'null_counts': null_counts, 'columns': cols}
+
+    def nulls(self) -> Dict[str, int]:
+        """Calculates missing/null count for each column."""
+        records = self.to_list()
+        cols = self.columns()
+        null_map = {c: 0 for c in cols}
+        for r in records:
+            for c in cols:
+                val = r.get(c)
+                if val is None or str(val).strip() == '':
+                    null_map[c] += 1
+        return null_map
+
+    def memory(self) -> int:
+        """Estimates dataset memory usage in bytes."""
+        import sys
+        records = self.to_list()
+        return sum((sys.getsizeof(r) + sum((sys.getsizeof(k) + sys.getsizeof(v) for k, v in r.items())) for r in records)) if records else 0
+
+    def sample(self, n: int=5) -> 'Dataset':
+        """Returns a sampled subset of records as a new Dataset."""
+        records = self.to_list()
+        sample_data = records[:min(n, len(records))]
+        return TabularDataset(sample_data, columns=self.columns(), metadata=self.metadata, history=self.history)
+
+    def save(self, path: str) -> 'Dataset':
+        """Auto-detects output format from file extension and exports dataset."""
+        from flowweaver.std import io
+        if path.endswith('.csv'):
+            return io.export_csv(self, path)
+        elif path.endswith('.json'):
+            return io.export_json(self, path)
+        elif path.endswith('.parquet'):
+            return io.export_parquet(self, path)
+        else:
+            return io.export_jsonl(self, path)
+
+    def to_polars(self) -> Any:
+        """Convert dataset to a Polars DataFrame. Loaded lazily."""
+        import polars as pl
+        return pl.DataFrame(self.to_list())
+
+    def to_arrow(self) -> Any:
+        """Convert dataset to a PyArrow Table. Loaded lazily."""
+        import pyarrow as pa
+        data = self.to_list()
+        cols = self.columns()
+        if not data:
+            return pa.Table.from_pydict({c: [] for c in cols})
+        return pa.Table.from_pydict({col: [row.get(col) for row in data] for col in cols})
+
+    def iter_chunks(self, chunk_size: int=1000) -> Iterator[List[Dict[str, Any]]]:
+        """Iterate over dataset records in chunk batches (streaming)."""
+        data = self.to_list()
+        for i in range(0, len(data), chunk_size):
+            yield data[i:i + chunk_size]
+
+    def with_history(self, op_name: str, **parameters: Any) -> 'Dataset':
+        """Appends an operation record to dataset history and returns self."""
+        rec = OperationRecord(name=op_name, timestamp=time.time(), parameters=parameters)
+        self._history.append(rec)
+        return self
+
+class TabularDataset(Dataset):
+    """Standard in-memory list-of-dicts tabular dataset."""
+
+    def __init__(self, data: List[Dict[str, Any]], columns: Optional[List[str]]=None, metadata: Optional[DatasetMetadata]=None, schema: Optional[DatasetSchema]=None, history: Optional[List[OperationRecord]]=None):
+        super().__init__(metadata=metadata, schema=schema, history=history)
+        self._data = data
+        if columns is not None:
+            self._columns = columns
+        else:
+            self._columns = list(data[0].keys()) if data else []
+        if not self._schema.columns:
+            self._schema = DatasetSchema.infer_from_records(data)
+        self._metadata.rows = len(data)
+        self._metadata.columns = len(self._columns)
+
+    def to_list(self) -> List[Dict[str, Any]]:
+        return self._data
+
+    def columns(self) -> List[str]:
+        return self._columns
+
+    def row_count(self) -> Optional[int]:
+        return len(self._data)
+
+class PolarsDataset(Dataset):
+    """Dataset wrapper around a Polars DataFrame."""
+
+    def __init__(self, df: Any, metadata: Optional[DatasetMetadata]=None, schema: Optional[DatasetSchema]=None, history: Optional[List[OperationRecord]]=None):
+        super().__init__(metadata=metadata, schema=schema, history=history)
+        self.df = df
+        self._metadata.rows = df.height
+        self._metadata.columns = len(df.columns)
+
+    def to_list(self) -> List[Dict[str, Any]]:
+        return self.df.to_dicts()
+
+    def columns(self) -> List[str]:
+        return self.df.columns
+
+    def row_count(self) -> Optional[int]:
+        return self.df.height
+
+    def to_polars(self) -> Any:
+        return self.df
+
+    def to_arrow(self) -> Any:
+        return self.df.to_arrow()
+
+    def iter_chunks(self, chunk_size: int=1000) -> Iterator[List[Dict[str, Any]]]:
+        for i in range(0, self.df.height, chunk_size):
+            yield self.df.slice(i, chunk_size).to_dicts()
+
+class ArrowDataset(Dataset):
+    """Dataset wrapper around a PyArrow Table."""
+
+    def __init__(self, table: Any, metadata: Optional[DatasetMetadata]=None, schema: Optional[DatasetSchema]=None, history: Optional[List[OperationRecord]]=None):
+        super().__init__(metadata=metadata, schema=schema, history=history)
+        self.table = table
+        self._metadata.rows = table.num_rows
+        self._metadata.columns = len(table.column_names)
+
+    def to_list(self) -> List[Dict[str, Any]]:
+        return self.table.to_pylist()
+
+    def columns(self) -> List[str]:
+        return self.table.column_names
+
+    def row_count(self) -> Optional[int]:
+        return self.table.num_rows
+
+    def to_polars(self) -> Any:
+        import polars as pl
+        return pl.from_arrow(self.table)
+
+    def to_arrow(self) -> Any:
+        return self.table
+
+    def iter_chunks(self, chunk_size: int=1000) -> Iterator[List[Dict[str, Any]]]:
+        import pyarrow as pa
+        for batch in self.table.to_batches(max_chunksize=chunk_size):
+            yield pa.Table.from_batches([batch]).to_pylist()
+
+# ======================================================
+# Helper Validation & Instrumentation Utilities
+# ======================================================
+def validate_dataset(dataset: Any) -> Dataset:
+    """Ensures input is a valid FlowWeaver Dataset instance."""
+    if not isinstance(dataset, Dataset):
+        raise TypeError(f'Expected input to be an instance of flowweaver.std.Dataset, got {type(dataset).__name__}')
+    return dataset
+
+def validate_columns_exist(dataset: Dataset, columns: List[str]) -> None:
+    """Ensures all specified columns exist in the dataset."""
+    cols = set(dataset.columns())
+    missing = [c for c in columns if c not in cols]
+    if missing:
+        raise ValueError(f'Columns {missing} not found in dataset columns: {list(cols)}')
+
+# ======================================================
+# Pipeline Standard Operations
+# ======================================================
+def import_dataset(path: str, format: Optional[str]=None, delimiter: str=',', root_key: str='', encoding: str='utf-8') -> Dataset:
+    """Universal Dataset Loader. Auto-detects structure and returns a FlowWeaver Dataset instance."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Dataset file not found: {path}')
+    ext = format.lower() if format else os.path.splitext(path)[1].lstrip('.').lower()
+    if ext == 'json':
+        with open(path, 'r', encoding=encoding) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            if root_key and root_key in data and isinstance(data[root_key], list):
+                data = data[root_key]
+            else:
+                for k in ('data', 'items', 'records', 'stories', 'train', 'documents'):
+                    if k in data and isinstance(data[k], list):
+                        data = data[k]
+                        break
+        if not isinstance(data, list):
+            data = [data]
+        cols = list(data[0].keys()) if data and isinstance(data[0], dict) else []
+        dataset = TabularDataset(data, columns=cols)
+    elif ext in ('jsonl', 'ndjson'):
+        rows = []
+        with open(path, 'r', encoding=encoding) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    rows.append(json.loads(line))
+        cols = list(rows[0].keys()) if rows else []
+        dataset = TabularDataset(rows, columns=cols)
+    elif ext in ('parquet', 'pq'):
+        try:
+            import polars as pl
+            df = pl.read_parquet(path)
+            dataset = PolarsDataset(df)
+        except Exception:
+            import pyarrow.parquet as pq
+            table = pq.read_table(path)
+            dataset = ArrowDataset(table)
+    else:
+        actual_delim = '\t' if ext == 'tsv' else delimiter
+        rows = []
+        with open(path, 'r', encoding=encoding) as f:
+            reader = csv.DictReader(f, delimiter=actual_delim)
+            for r in reader:
+                rows.append(dict(r))
+        cols = list(rows[0].keys()) if rows else []
+        dataset = TabularDataset(rows, columns=cols)
+    dataset.metadata.source = path
+    dataset.metadata.encoding = encoding
+    classification = _classify_dataset(dataset.columns(), dataset.to_list()[:10])
+    dataset.metadata.extra['dataset_type'] = classification['type']
+    dataset.metadata.extra['confidence'] = classification['confidence']
+    dataset.metadata.extra['recommendation'] = classification['recommendation']
+    return dataset.with_history('import_dataset', path=path, format=ext)
+
+def dedup_exact(dataset: Dataset, columns: Optional[List[str]]=None) -> Dataset:
+    """Removes duplicate rows based on exact match across target columns (or all columns if None)."""
+    validate_dataset(dataset)
+    if columns:
+        validate_columns_exist(dataset, columns)
+    rows = dataset.to_list()
+    seen = set()
+    deduped = []
+    for r in rows:
+        if columns:
+            key = tuple((r.get(c) for c in columns))
+        else:
+            key = tuple(sorted(((k, str(v)) for k, v in r.items())))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    res = TabularDataset(deduped, columns=dataset.columns(), metadata=dataset.metadata, history=dataset.history)
+    return res.with_history('dedup_exact', columns=columns)
+
+def export_csv(dataset: Dataset, path: str, delimiter: str=',') -> Dataset:
+    """Exports dataset records into a CSV file."""
+    validate_dataset(dataset)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    records = dataset.to_list()
+    cols = dataset.columns()
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=cols, delimiter=delimiter)
+        writer.writeheader()
+        if records:
+            writer.writerows(records)
+    return dataset.with_history('export_csv', path=path, delimiter=delimiter)
+
+def _classify_dataset(cols: List[str], records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Auto-classifies dataset type and returns confidence stats."""
+    cols_set = set((c.lower() for c in cols))
+    if {'instruction', 'output'}.issubset(cols_set) or {'prompt', 'response'}.issubset(cols_set):
+        return {'type': 'Instruction Tuning', 'confidence': 0.98, 'recommendation': 'Unicode Normalize -> Lowercase Instructions -> Filter Empty'}
+    elif 'messages' in cols_set or 'conversations' in cols_set:
+        return {'type': 'Multi-turn Chat', 'confidence': 0.95, 'recommendation': 'Strip HTML -> SimHash Dedup -> Export Parquet'}
+    elif any((c in cols_set for c in ('text', 'content', 'body', 'document', 'story', 'raw_text'))):
+        return {'type': 'Unstructured Text', 'confidence': 0.92, 'recommendation': 'Unicode NFC -> Regex Replace -> Length Filter -> Export JSONL'}
+    else:
+        return {'type': 'Tabular Data', 'confidence': 0.85, 'recommendation': 'Remove Nulls -> Dedup Exact -> Export Parquet'}
+
+
+# --------------------------------------------------------
+# Logging Configuration
+# --------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
+)
+logger = logging.getLogger("flowweaver.pipeline")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="6Na68Unh — FlowWeaver Pipeline")
+    parser.add_argument("--input", default="data/users.csv", help="Input dataset path")
+    parser.add_argument("--output", default="out/results.csv", help="Output file path")
+    parser.add_argument("--dry-run", action="store_true", help="Validate pipeline without writing output")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    return parser.parse_args()
+
 
 def main():
-    # --------------------------------------------------------
-    # Step 1: Import CSV Dataset
-    # --------------------------------------------------------
-    raw_dataset = import_dataset(path='data/users.csv', delimiter=',')
+    args = parse_args()
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    logger.info("Starting pipeline: 6na68unh")
+    pipeline_start = time.time()
 
     # --------------------------------------------------------
-    # Step 2: Sample Random Subset of Rows
+    # Step 1/3: Import CSV Dataset
     # --------------------------------------------------------
-    sampled_dataset = sample_rows(raw_dataset, n=100, seed=42)
+    logger.info("Step 1/3: Import CSV Dataset")
+    raw_dataset = import_dataset(path=args.input, delimiter=',')
 
     # --------------------------------------------------------
-    # Step 3: Deduplicate Records
+    # Step 2/3: Deduplicate Records
     # --------------------------------------------------------
-    deduplicated_dataset = dedup_exact(sampled_dataset)
+    logger.info("Step 2/3: Deduplicate Records")
+    deduplicated_dataset = dedup_exact(raw_dataset)
 
     # --------------------------------------------------------
-    # Step 4: Export to CSV
+    # Step 3/3: Export to CSV
     # --------------------------------------------------------
-    processed_dataset = export_csv(deduplicated_dataset, path='out/results.csv')
+    logger.info("Step 3/3: Export to CSV")
+    processed_dataset = export_csv(deduplicated_dataset, path=args.output)
+
+    elapsed = time.time() - pipeline_start
+    logger.info(f"Pipeline completed in {elapsed:.2f}s")
 
 
 if __name__ == "__main__":
