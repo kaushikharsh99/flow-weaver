@@ -120,9 +120,10 @@ class PipelineCompiler:
                 src_node_id = incoming_edges[0].get("source")
                 input_var = node_var_map.get(src_node_id)
 
-            # Allocate output variable
-            out_var = ctx.variables.generate_var(node_id=n_id, prefix="dataset")
+            # Allocate output variable with semantic naming
+            out_var = ctx.variables.generate_var(node_id=n_id, type_id=type_id)
             node_var_map[n_id] = out_var.name
+
 
             ctx.current_node_id = n_id
             ctx.input_var = input_var

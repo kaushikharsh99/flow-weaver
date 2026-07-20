@@ -1,0 +1,58 @@
+{
+  "id": "official_alpaca_pipeline",
+  "name": "Alpaca Instruction Tuning Pipeline",
+  "description": "Production instruction tuning dataset prep: lowercase instructions, remove empty fields, exact deduplication.",
+  "nodes": [
+    {
+      "id": "import_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "import_dataset",
+        "title": "Import Alpaca Dataset",
+        "params": {"path": "data/alpaca_data.json"}
+      }
+    },
+    {
+      "id": "lowercase_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "lowercase",
+        "title": "Lowercase Instruction Text",
+        "params": {"column": "instruction"}
+      }
+    },
+    {
+      "id": "filter_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "remove_empty",
+        "title": "Filter Empty Instructions",
+        "params": {"columns": "instruction,output"}
+      }
+    },
+    {
+      "id": "dedup_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "dedup_exact",
+        "title": "Deduplicate Exact Matches",
+        "params": {"method": "exact"}
+      }
+    },
+    {
+      "id": "export_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "write_jsonl",
+        "title": "Export Prepared Instruction JSONL",
+        "params": {"path": "out/alpaca_finetune.jsonl"}
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "import_1", "target": "lowercase_1"},
+    {"id": "e2", "source": "lowercase_1", "target": "filter_1"},
+    {"id": "e3", "source": "filter_1", "target": "dedup_1"},
+    {"id": "e4", "source": "dedup_1", "target": "export_1"}
+  ]
+}

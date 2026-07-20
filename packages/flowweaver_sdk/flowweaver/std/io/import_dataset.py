@@ -5,6 +5,20 @@ from typing import Optional, Dict, Any, List
 from flowweaver.std.datasets import Dataset, TabularDataset, PolarsDataset, ArrowDataset, DatasetMetadata
 
 
+def _classify_dataset(cols: List[str], records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Auto-classifies dataset type and returns confidence stats."""
+    cols_set = set(c.lower() for c in cols)
+    
+    if {"instruction", "output"}.issubset(cols_set) or {"prompt", "response"}.issubset(cols_set):
+        return {"type": "Instruction Tuning", "confidence": 0.98, "recommendation": "Unicode Normalize -> Lowercase Instructions -> Filter Empty"}
+    elif "messages" in cols_set or "conversations" in cols_set:
+        return {"type": "Multi-turn Chat", "confidence": 0.95, "recommendation": "Strip HTML -> SimHash Dedup -> Export Parquet"}
+    elif any(c in cols_set for c in ("text", "content", "body", "document", "story", "raw_text")):
+        return {"type": "Unstructured Text", "confidence": 0.92, "recommendation": "Unicode NFC -> Regex Replace -> Length Filter -> Export JSONL"}
+    else:
+        return {"type": "Tabular Data", "confidence": 0.85, "recommendation": "Remove Nulls -> Dedup Exact -> Export Parquet"}
+
+
 def import_dataset(
     path: str,
     format: Optional[str] = None,
@@ -66,4 +80,9 @@ def import_dataset(
 
     dataset.metadata.source = path
     dataset.metadata.encoding = encoding
+    classification = _classify_dataset(dataset.columns(), dataset.to_list()[:10])
+    dataset.metadata.extra["dataset_type"] = classification["type"]
+    dataset.metadata.extra["confidence"] = classification["confidence"]
+    dataset.metadata.extra["recommendation"] = classification["recommendation"]
     return dataset.with_history("import_dataset", path=path, format=ext)
+

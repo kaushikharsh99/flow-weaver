@@ -78,8 +78,9 @@ class PythonGenerator:
             return self._format_expression(val)
         elif isinstance(val, IRConstant):
             return repr(val.value)
-        elif isinstance(val, str) and (val == "dataset" or val.startswith("dataset_")):
+        elif isinstance(val, str) and (val == "dataset" or val.startswith("dataset_") or val.endswith("_dataset")):
             return val
+
         else:
             return repr(val)
 

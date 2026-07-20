@@ -57,10 +57,73 @@ class Dataset(abc.ABC):
         """Return number of rows if known, or None."""
         pass
 
+    def preview(self, limit: int = 5) -> Dict[str, Any]:
+        """Returns structured preview payload including sample rows, schema, and metadata."""
+        records = self.to_list()
+        sample = records[:limit]
+        return {
+            "rows": sample,
+            "columns": self.columns(),
+            "schema": [c.__dict__ for c in self.schema.columns],
+            "row_count": len(records),
+            "metadata": self.metadata.__dict__,
+            "history": [h.__dict__ for h in self.history]
+        }
+
+    def statistics(self) -> Dict[str, Any]:
+        """Computes summary statistics for dataset columns."""
+        records = self.to_list()
+        cols = self.columns()
+        null_counts = self.nulls()
+        return {
+            "row_count": len(records),
+            "column_count": len(cols),
+            "memory_bytes": self.memory(),
+            "null_counts": null_counts,
+            "columns": cols
+        }
+
+    def nulls(self) -> Dict[str, int]:
+        """Calculates missing/null count for each column."""
+        records = self.to_list()
+        cols = self.columns()
+        null_map = {c: 0 for c in cols}
+        for r in records:
+            for c in cols:
+                val = r.get(c)
+                if val is None or str(val).strip() == "":
+                    null_map[c] += 1
+        return null_map
+
+    def memory(self) -> int:
+        """Estimates dataset memory usage in bytes."""
+        import sys
+        records = self.to_list()
+        return sum(sys.getsizeof(r) + sum(sys.getsizeof(k) + sys.getsizeof(v) for k, v in r.items()) for r in records) if records else 0
+
+    def sample(self, n: int = 5) -> "Dataset":
+        """Returns a sampled subset of records as a new Dataset."""
+        records = self.to_list()
+        sample_data = records[:min(n, len(records))]
+        return TabularDataset(sample_data, columns=self.columns(), metadata=self.metadata, history=self.history)
+
+    def save(self, path: str) -> "Dataset":
+        """Auto-detects output format from file extension and exports dataset."""
+        from flowweaver.std import io
+        if path.endswith(".csv"):
+            return io.export_csv(self, path)
+        elif path.endswith(".json"):
+            return io.export_json(self, path)
+        elif path.endswith(".parquet"):
+            return io.export_parquet(self, path)
+        else:
+            return io.export_jsonl(self, path)
+
     def to_polars(self) -> Any:
         """Convert dataset to a Polars DataFrame. Loaded lazily."""
         import polars as pl
         return pl.DataFrame(self.to_list())
+
 
     def to_arrow(self) -> Any:
         """Convert dataset to a PyArrow Table. Loaded lazily."""
