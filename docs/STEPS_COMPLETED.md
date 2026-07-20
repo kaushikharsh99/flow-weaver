@@ -116,3 +116,23 @@ This document records the exact milestones, phases, and files implemented during
 - Added empty-state guidance card overlays in the infinite canvas wrapper.
 - Refactored visual toolbar buttons to spring-motion elements with hover/click scaling effects.
 - Cleaned up leftover branding (Flowline, Lovable) and removed `.lovable` project files.
+
+### Refactoring Visual Compiler Platform (v0.1.0 Complete)
+- **Compiler Subsystem Implementation (`apps/api/app/compiler/`)**:
+  - Implemented Kahn's algorithm-based Topological Sorter.
+  - Implemented `CompilerContext` with variable allocation managers (`variables.py`), dynamic import managers (`imports.py`), and a validator (`validator.py`).
+  - Added Fluent SDK API wrapper (`DatasetRef` inside `context.py`) supporting simplified compilation definitions (`ctx.dataset().lowercase()`, etc.).
+- **Argparse & Logging Code Generation (`generator.py`)**:
+  - Standalone scripts now include standard `logging` setup, timed execution markers (`time.time()`), and a robust CLI argument parser configuration (`argparse`).
+  - Auto-substitutes input and output path string literals with dynamic `args.input` and `args.output` CLI arguments.
+  - Formatted generated code cleanly with numbered comment step headers (e.g. `# Step 1/8: Import Dataset`).
+- **Standard Library Expansion (`flowweaver.std`)**:
+  - Expanded `tabular/` operations: `drop_columns`, `sample_rows`, `shuffle`, `split_dataset`, `concatenate`, `statistics`.
+  - Expanded `text/` operations: `strip_html`, `strip_whitespace`.
+  - Migrated nodes `DropColumns`, `SortRows`, `Shuffle`, `SplitDataset`, `Concatenate`, `SampleRows` from stubs.py to real production adapters in `transform.py` and `filters.py`.
+- **Packaging Pipeline Artifacts**:
+  - Compiler outputs a structured package: stand-alone executable (`pipeline.py`), visual representation (`pipeline.json`), dependency lock file (`pipeline.lock`), compilation statistics metrics (`metadata.json`), and structured log directory.
+- **Frontend Code Display & REST API Fixes**:
+  - Implemented line numbers gutter, syntax coloring, and horizontal scrolling in frontend `CompileViewerModal.tsx`.
+  - Resolved `Project` models serialization `PydanticSerializationError` 500 in `/api/projects` endpoint.
+

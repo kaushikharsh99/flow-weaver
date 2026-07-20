@@ -14,12 +14,15 @@ flow-weaver/
 │   ├── api/                 # FastAPI Backend Service
 │   │   ├── app/
 │   │   │   ├── engine/      # Core Execution Engine & Node Registry
-│   │   │   │   ├── compiler/# Compiler Pipeline Subsystem
-│   │   │   │   │   ├── builder.py    # Converts JSON to logical DAG Tasks
-│   │   │   │   │   ├── models.py     # Pydantic compile-time schemas
-│   │   │   │   │   ├── optimizer.py  # Cache/Checkpoints optimization rules
-│   │   │   │   │   ├── planner.py    # Generates layered execution plans
-│   │   │   │   │   └── validator.py  # Run cycles & semantic safety checks
+│   │   │   │   ├── compiler/# Compiler Subsystem
+│   │   │   │   │   ├── compiler.py   # Main Visual Pipeline Compiler
+│   │   │   │   │   ├── context.py    # CompilerContext & fluent DatasetRef SDK
+│   │   │   │   │   ├── generator/    # Python code generator, variables & imports managers
+│   │   │   │   │   ├── ir/           # Intermediate Representation (IR) models
+│   │   │   │   │   ├── runtime/      # Standard runtime execution runner
+│   │   │   │   │   ├── templates/    # Header/Footer generated code templates
+│   │   │   │   │   ├── result.py     # CompilerResult schema
+│   │   │   │   │   └── validator.py  # Graph cycles & validation rules
 │   │   │   │   ├── nodes/   # Individual Python Node Implementations
 │   │   │   │   │   ├── cleaning.py  # Lowercase, html-strip, empty-remove nodes
 │   │   │   │   │   ├── core_logic.py# Reusable computational library for nodes
@@ -131,15 +134,15 @@ Instead of mixing setup tasks during dev servers execution, project lifecycle co
 
 ---
 
-## 6. Compiler Pipeline (Plan & Compilation)
+## 6. Visual Compiler Architecture & Pipeline
 
-FlowWeaver compiles visual pipelines prior to running them:
+FlowWeaver compiles visual pipelines directly into standalone, production-ready Python scripts:
 
-1. **Semantic Validator** (`validator.py`): Validates schemas, parameters (including regex and JSON syntax constraints), required inputs connectivity, and checks for DAG cycles.
-2. **Graph Builder** (`builder.py`): Translates raw JSON representation into logical tasks mapping input-to-output handles.
-3. **Graph Optimizer** (`optimizer.py`): Evaluates caching rules, checkpoint states, and disabled tasks.
-4. **Execution Planner** (`planner.py`): Organizes execution into sequential stages, separating concurrent tasks.
-5. **DAG Executor** (`runner.py`): Consumes plan stages and executes tasks, streaming logs and updates via WebSockets.
+1. **Semantic Validator** (`validator.py`): Performs validations (cycles detection, parameters verification) before compilation.
+2. **Topological Sorter**: Arranges DAG nodes into topological execution order via Kahn's algorithm.
+3. **Compiler Context & IR Construction** (`context.py`, `ir/`): Allocates readable semantic variables, maps nodes dynamically to standard library functions, resolves modules dynamically, and formats intermediate pipeline representation.
+4. **Python Code Generator** (`generator/`): Translates IR operations into clean, formatted, production-grade Python scripts complete with `argparse` options mapping input/output files, structured standard `logging` setup, step-by-step progress, and timing execution profiles.
+5. **Stand-alone Executable**: The resulting `pipeline.py` is fully standalone; executing it runs the dataset processing directly.
 
 ---
 

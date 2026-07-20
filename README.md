@@ -83,4 +83,11 @@ See [`docs/creating-nodes.md`](docs/creating-nodes.md) for the full contract (wh
 
 ## Status
 
-This is an early, actively-changing project — expect rough edges, and expect the pipeline format to still shift a bit before it settles. Issues and PRs welcome; see [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the ground rules (mainly: keep node adapters thin, put logic in `core/`, and don't skip the pre-commit gate).
+FlowWeaver has completed its transition to a full compiler platform:
+- **Visual Compiler Architecture**: Visual pipeline DAGs compile directly into pure Python scripts targeting the expanded `flowweaver.std` standard library.
+- **Production-Grade Generated Code**: Standalone scripts feature robust CLI options (`argparse`), detailed execution `logging`, step counts progress, and runtime metrics.
+- **Pipeline Artifacts Packaging**: Compiler outputs comprehensive build packages containing the compiled `pipeline.py`, visual DAG source (`pipeline.json`), dependency lock file (`pipeline.lock`), compilation metrics (`metadata.json`), and execution logs structure.
+- **Standard Library & Node Registry**: Core cleaning, loading, transforming, deduplicating, and dataset splitting nodes are fully production-ready and auto-discovered.
+
+See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for contribution guidelines.
+

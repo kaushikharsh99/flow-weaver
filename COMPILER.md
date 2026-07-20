@@ -78,12 +78,17 @@ class LowercaseNode(Node):
 - `ctx.dataset().lowercase(column=...)`
 - `ctx.dataset().uppercase(column=...)`
 - `ctx.dataset().unicode_normalize(column=..., form=...)`
-- `ctx.dataset().strip_whitespace(column=...)`
+- `ctx.dataset().strip_whitespace(column=..., collapse=...)`
+- `ctx.dataset().strip_html(column=...)`
 - `ctx.dataset().regex_replace(column=..., pattern=..., replacement=...)`
 - `ctx.dataset().select_columns(columns=...)`
 - `ctx.dataset().rename_columns(rename_map=...)`
-- `ctx.dataset().filter_rows(column=..., operator=..., value=...)`
+- `ctx.dataset().drop_columns(columns=...)`
 - `ctx.dataset().sort_rows(by=..., ascending=...)`
+- `ctx.dataset().sample_rows(n=..., seed=...)`
+- `ctx.dataset().shuffle(seed=...)`
+- `ctx.dataset().split_dataset(ratio=..., seed=...)`
+- `ctx.dataset().concatenate(other_var=...)`
 - `ctx.dataset().dedup_exact(columns=...)`
 - `ctx.dataset().simhash_deduplicate(column=..., threshold=...)`
 - `ctx.dataset().export_csv(path=...)`
@@ -145,3 +150,26 @@ def main():
 if __name__ == '__main__':
     main()
 ```
+
+---
+
+## 🎨 Generated Python Quality & Production Features
+
+FlowWeaver compiles visual pipelines into professional, hand-written quality standalone Python scripts equipped with:
+
+1. **Structured CLI Arguments (`argparse`)**:
+   - Auto-detects input and output paths to generate `--input` and `--output` options.
+   - Provides `--dry-run` and `--verbose` flags out-of-the-box.
+   - Substitutes path string literals with `args.input` and `args.output` references dynamically.
+
+2. **Step Progress & Logging**:
+   - Sets up standard `logging` with structured formats: `HH:MM:SS [LEVEL] Message`.
+   - Injects progress log tags for every pipeline step (e.g., `logger.info("Step 3/8: Normalize Text to Lowercase")`).
+
+3. **Performance Metrics**:
+   - Injects timestamps (`time.time()`) to track and report precise total execution times upon pipeline completion.
+
+4. **Visual Layout & Formatting**:
+   - Steps are separated by readable comment headers.
+   - Python code is formatted with maximum clarity and uses semantic variable names instead of generic names.
+
