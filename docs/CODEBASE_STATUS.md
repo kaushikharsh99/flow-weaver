@@ -111,13 +111,11 @@ Configured in `apps/api/app/models.py`. Standard tables:
 - **`projects`**: Holds list of workspaces.
 - **`pipelines`**: Holds JSON nodes, edges, viewport, variables, and settings.
 - **`executions`**: Tracks active background runner status and logs.
-- **`templates`**: Holds reusable pipeline structures. On startup, the database is seeded automatically with **6 default preprocessing templates**:
-  1. *LLM Fine-Tuning Prep*: Connects loaders, lowercaser, normalizer, empty filters, and writes JSONL.
-  2. *RAG Document Prep*: Connects JSON loading, html stripping, unicode normalization, word chunking, and JSONL exports.
-  3. *TinyStories Dataset Cleaning*: Connects story loading, html stripping, length filters, and CSV exports.
-  4. *ShareGPT Preprocessing*: Connects dialog loading, column renames, spacing replaces, and JSONL exports.
-  5. *OCR Post-Processing*: Connects OCR loading, punctuation correction, text filters, and CSV exports.
-  6. *Common Crawl Processing*: Connects crawl loading, html stripping, language filtering, exact deduplication, and Parquet exports.
+- **`templates`**: Holds reusable pipeline structures. On startup, the database is seeded automatically by scanning the `apps/api/app/templates/` directory and loading all JSON-defined templates. The system currently ships with:
+  1. *TinyStories Preprocessing*: A complete text cleaning pipeline with unicode normalization and regex whitespace replacement.
+  2. *Alpaca Instruction Tuning*: An instruction tuning dataset preparation pipeline with lowercase filters, empty row deletion, and exact deduplication.
+  3. *FineWeb Text Processing*: A web corpus cleaning pipeline with HTML stripping, unicode normalization, and SimHash near-deduplication.
+  Any new `.json` file placed in the templates folder is automatically registered on boot and made available via the frontend Template Gallery.
 
 ---
 
