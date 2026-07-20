@@ -104,9 +104,9 @@ def test_compiler_end_to_end():
             code = f.read()
 
         assert "def main():" in code
-        assert "import_dataset" in code
+        assert "import_json_dataset" in code
         assert "unicode_normalize" in code
-        assert "raw_dataset = import_dataset" in code
+        assert "raw_dataset = import_json_dataset" in code
         assert "normalized_dataset = unicode_normalize" in code
 
 
