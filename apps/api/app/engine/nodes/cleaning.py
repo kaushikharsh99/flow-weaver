@@ -20,6 +20,43 @@ class LowercaseNode(Node):
         return {"out": text.lowercase(dataset, column=col)}
 
 
+@node(name="Uppercase Text", category="Transform", icon="Type", description="Convert a column's text values to uppercase")
+class UppercaseNode(Node):
+    id = "uppercase"
+    in_data = Input.tabular(label="Rows")
+    out = Output.tabular(label="Modified Rows")
+    column = Param.column(label="Target Column", default="text")
+
+    def compile(self, ctx: Any) -> Any:
+        col = ctx.current_params.get("column", "text")
+        return ctx.dataset().uppercase(column=col)
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        dataset = inputs.get("in_data")
+        col = ctx.parameters.get("column", "text")
+        return {"out": text.uppercase(dataset, column=col)}
+
+
+@node(name="Strip Whitespace", category="Transform", icon="Scissors", description="Strip leading/trailing whitespace")
+class StripWhitespaceNode(Node):
+    id = "strip_whitespace"
+    in_data = Input.tabular(label="Rows")
+    out = Output.tabular(label="Cleaned Rows")
+    column = Param.column(label="Target Column", default="text")
+    collapse = Param.boolean(label="Collapse Multiple Spaces", default=False)
+
+    def compile(self, ctx: Any) -> Any:
+        col = ctx.current_params.get("column", "text")
+        collapse = ctx.current_params.get("collapse", False)
+        return ctx.dataset().strip_whitespace(column=col, collapse=collapse)
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        dataset = inputs.get("in_data")
+        col = ctx.parameters.get("column", "text")
+        collapse = ctx.parameters.get("collapse", False)
+        return {"out": text.strip_whitespace(dataset, column=col, collapse=collapse)}
+
+
 @node(name="Strip HTML", category="Transform", icon="Code2", description="Remove HTML tags from text column content")
 class StripHTMLNode(Node):
     id = "strip_html"

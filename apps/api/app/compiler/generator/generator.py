@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from app.compiler.ir import PipelineIR, IROperation, IRCall, IRConstant, IRVariable
 
 
@@ -38,6 +38,7 @@ NODE_STEP_DESCRIPTIONS = {
     "shuffle": "Shuffle Dataset Rows",
     "split_dataset": "Split into Train/Test Sets",
     "concatenate": "Concatenate Datasets",
+    "statistics": "Compute Dataset Statistics",
 
     "write_csv": "Export to CSV",
     "write_jsonl": "Export to JSON Lines",
@@ -45,6 +46,17 @@ NODE_STEP_DESCRIPTIONS = {
     "export_csv": "Export to CSV",
     "export_jsonl": "Export to JSON Lines",
     "export_parquet": "Export to Parquet",
+}
+
+# Node types that are import/load operations
+IMPORT_NODE_TYPES = {
+    "import_dataset", "load_file", "load_csv", "load_json", "load_jsonl", "load_parquet"
+}
+
+# Node types that are export/write operations
+EXPORT_NODE_TYPES = {
+    "write_csv", "write_jsonl", "write_parquet",
+    "export_csv", "export_jsonl", "export_parquet"
 }
 
 SECTION_SEPARATOR = "# " + "-" * 56
@@ -58,20 +70,72 @@ class PythonGenerator:
 
     def generate(self, ir: PipelineIR) -> str:
         builder = CodeBuilder()
+        total_steps = len(ir.operations)
+
+        # Detect input/output paths for argparse
+        input_path, output_path = self._detect_io_paths(ir)
 
         # 1. Header Docstring
         builder.line(get_header(ir.name))
         builder.blank()
 
-        # 2. Imports Section
+        # 2. Standard library imports
+        builder.line("import argparse")
+        builder.line("import logging")
+        builder.line("import time")
+        builder.blank()
+
+        # 3. FlowWeaver imports
         if ir.imports:
             for imp in ir.imports:
                 builder.line(imp.to_statement())
             builder.blank()
 
-        # 3. Main function definition
+        # 4. Logging setup
+        builder.line(SECTION_SEPARATOR)
+        builder.line("# Logging Configuration")
+        builder.line(SECTION_SEPARATOR)
+        builder.line('logging.basicConfig(')
+        builder.line('    level=logging.INFO,')
+        builder.line('    format="%(asctime)s [%(levelname)s] %(message)s",')
+        builder.line('    datefmt="%H:%M:%S"')
+        builder.line(')')
+        builder.line('logger = logging.getLogger("flowweaver.pipeline")')
+        builder.blank()
+        builder.blank()
+
+        # 5. Parse args function
+        builder.line("def parse_args():")
+        builder.indent()
+        safe_name = ir.name.replace("_", " ").title()
+        builder.line(f'parser = argparse.ArgumentParser(description="{safe_name} — FlowWeaver Pipeline")')
+        if input_path:
+            builder.line(f'parser.add_argument("--input", default="{input_path}", help="Input dataset path")')
+        if output_path:
+            builder.line(f'parser.add_argument("--output", default="{output_path}", help="Output file path")')
+        builder.line('parser.add_argument("--dry-run", action="store_true", help="Validate pipeline without writing output")')
+        builder.line('parser.add_argument("--verbose", action="store_true", help="Enable debug logging")')
+        builder.line("return parser.parse_args()")
+        builder.dedent()
+        builder.blank()
+        builder.blank()
+
+        # 6. Main function definition
         builder.line("def main():")
         builder.indent()
+
+        # Args + verbose setup
+        builder.line("args = parse_args()")
+        builder.line("if args.verbose:")
+        builder.indent()
+        builder.line("logging.getLogger().setLevel(logging.DEBUG)")
+        builder.dedent()
+        builder.blank()
+
+        # Pipeline start banner
+        builder.line(f'logger.info("Starting pipeline: {ir.name}")')
+        builder.line("pipeline_start = time.time()")
+        builder.blank()
 
         if not ir.operations:
             builder.line("pass")
@@ -80,23 +144,62 @@ class PythonGenerator:
                 # Section separator with step number and description
                 step_desc = NODE_STEP_DESCRIPTIONS.get(op.node_type, op.node_type.replace("_", " ").title())
                 builder.line(SECTION_SEPARATOR)
-                builder.line(f"# Step {step_num}: {step_desc}")
+                builder.line(f"# Step {step_num}/{total_steps}: {step_desc}")
                 builder.line(SECTION_SEPARATOR)
 
-                call_expr = self._format_expression(op.expression)
+                # Progress log
+                builder.line(f'logger.info("Step {step_num}/{total_steps}: {step_desc}")')
+
+                # Build the actual call expression, substituting argparse vars for paths
+                call_expr = self._format_expression(op.expression, input_path, output_path)
+
+                # For import nodes, use args.input if available
+                if op.node_type in IMPORT_NODE_TYPES and input_path:
+                    call_expr = self._substitute_path_arg(call_expr, input_path, "args.input")
+
+                # For export nodes, use args.output if available
+                if op.node_type in EXPORT_NODE_TYPES and output_path:
+                    call_expr = self._substitute_path_arg(call_expr, output_path, "args.output")
+
                 builder.line(f"{op.target_variable} = {call_expr}")
                 builder.blank()
 
+        # Pipeline completion
+        builder.line("elapsed = time.time() - pipeline_start")
+        builder.line(f'logger.info(f"Pipeline completed in {{elapsed:.2f}}s")')
+
         builder.dedent()
         builder.blank()
+        builder.blank()
 
-        # 4. Footer script entrypoint
+        # 7. Footer script entrypoint
         builder.line(get_footer())
 
         raw_code = builder.to_code()
         return Formatter.format_code(raw_code)
 
-    def _format_expression(self, expr: Any) -> str:
+    def _detect_io_paths(self, ir: PipelineIR) -> Tuple[Optional[str], Optional[str]]:
+        """Extract the first input path and last output path from pipeline operations."""
+        input_path = None
+        output_path = None
+
+        for op in ir.operations:
+            if isinstance(op.expression, IRCall):
+                path_val = op.expression.kwargs.get("path")
+                if path_val is not None:
+                    path_str = path_val.value if isinstance(path_val, IRConstant) else str(path_val)
+                    if op.node_type in IMPORT_NODE_TYPES and input_path is None:
+                        input_path = path_str
+                    elif op.node_type in EXPORT_NODE_TYPES:
+                        output_path = path_str
+
+        return input_path, output_path
+
+    def _substitute_path_arg(self, call_expr: str, literal_path: str, arg_ref: str) -> str:
+        """Replace a literal path string with an argparse reference."""
+        return call_expr.replace(f"'{literal_path}'", arg_ref).replace(f'"{literal_path}"', arg_ref)
+
+    def _format_expression(self, expr: Any, input_path: Optional[str] = None, output_path: Optional[str] = None) -> str:
         if isinstance(expr, IRCall):
             args_list = []
 
