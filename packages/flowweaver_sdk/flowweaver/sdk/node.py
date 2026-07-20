@@ -339,7 +339,12 @@ class Node(metaclass=NodeMeta):
         """Execute implementation. Accepts inputs and returns dictionary mapping output port -> value."""
         raise NotImplementedError("execute() must be implemented by subclasses.")
 
+    def compile(self, ctx: Any) -> Any:
+        """Compile implementation. Generates Intermediate Representation (IR) call/expression for this node."""
+        return None
+
     def preview(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Optional[Dict[str, Any]]:
+
         """Optional lightweight preview for the UI. Returns same shape as execute().
         If not implemented, the framework falls back to execute()."""
         return None
