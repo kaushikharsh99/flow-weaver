@@ -6,6 +6,8 @@ from flowweaver.std.datasets.dataset import (
     StreamingDataset,
     OperationRecord,
 )
+from flowweaver.std.datasets.schema import DatasetSchema, ColumnSchema
+from flowweaver.std.datasets.metadata import DatasetMetadata
 
 __all__ = [
     "Dataset",
@@ -14,4 +16,7 @@ __all__ = [
     "ArrowDataset",
     "StreamingDataset",
     "OperationRecord",
+    "DatasetSchema",
+    "ColumnSchema",
+    "DatasetMetadata",
 ]

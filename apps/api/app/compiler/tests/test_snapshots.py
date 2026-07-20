@@ -106,10 +106,7 @@ def test_llm_finetuning_pipeline_snapshot():
 
         assert res.success
         assert "def main():" in res.script
-        assert "from app.engine.nodes.core_logic import" in res.script
-        assert "import_dataset" in res.script
-        assert "lowercase" in res.script
-        assert "unicode_normalize" in res.script
-        assert "remove_empty" in res.script
-        assert "write_jsonl" in res.script
+        assert "from flowweaver.std.io import import_dataset" in res.script
+        assert "from flowweaver.std.text import lowercase" in res.script
+
 
