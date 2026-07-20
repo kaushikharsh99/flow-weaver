@@ -9,29 +9,38 @@ from app.compiler.generator import PythonGenerator
 from app.engine.registry import registry
 
 
-CORE_LOGIC_MODULE = "app.engine.nodes.core_logic"
-
 NODE_MODULE_MAP = {
-    "import_dataset": (CORE_LOGIC_MODULE, "import_dataset"),
-    "load_file": (CORE_LOGIC_MODULE, "import_dataset"),
-    "load_csv": (CORE_LOGIC_MODULE, "import_dataset"),
-    "load_json": (CORE_LOGIC_MODULE, "import_dataset"),
-    "load_jsonl": (CORE_LOGIC_MODULE, "import_dataset"),
-    "load_parquet": (CORE_LOGIC_MODULE, "import_dataset"),
-    "unicode_normalize": (CORE_LOGIC_MODULE, "unicode_normalize"),
-    "lowercase": (CORE_LOGIC_MODULE, "lowercase"),
-    "strip_html": (CORE_LOGIC_MODULE, "strip_html"),
-    "regex_replace": (CORE_LOGIC_MODULE, "regex_replace"),
-    "chunk_text": (CORE_LOGIC_MODULE, "chunk_text"),
-    "remove_empty": (CORE_LOGIC_MODULE, "remove_empty"),
-    "filter_rows": (CORE_LOGIC_MODULE, "filter_rows"),
-    "length_filter": (CORE_LOGIC_MODULE, "length_filter"),
-    "language_filter": (CORE_LOGIC_MODULE, "language_filter"),
-    "dedup_exact": (CORE_LOGIC_MODULE, "dedup_exact"),
-    "write_csv": (CORE_LOGIC_MODULE, "write_csv"),
-    "write_jsonl": (CORE_LOGIC_MODULE, "write_jsonl"),
-    "write_parquet": (CORE_LOGIC_MODULE, "write_parquet"),
+    "import_dataset": ("flowweaver.std.io", "import_dataset"),
+    "load_file": ("flowweaver.std.io", "import_dataset"),
+    "load_csv": ("flowweaver.std.io", "import_dataset"),
+    "load_json": ("flowweaver.std.io", "import_dataset"),
+    "load_jsonl": ("flowweaver.std.io", "import_dataset"),
+    "load_parquet": ("flowweaver.std.io", "import_dataset"),
+
+    "unicode_normalize": ("flowweaver.std.text", "unicode_normalize"),
+    "lowercase": ("flowweaver.std.text", "lowercase"),
+    "uppercase": ("flowweaver.std.text", "uppercase"),
+    "strip_whitespace": ("flowweaver.std.text", "strip_whitespace"),
+    "regex_replace": ("flowweaver.std.text", "regex_replace"),
+
+    "select_columns": ("flowweaver.std.tabular", "select_columns"),
+    "rename_columns": ("flowweaver.std.tabular", "rename_columns"),
+    "filter_rows": ("flowweaver.std.tabular", "filter_rows"),
+    "sort_rows": ("flowweaver.std.tabular", "sort_rows"),
+
+    "dedup_exact": ("flowweaver.std.dedup", "dedup_exact"),
+    "simhash_deduplicate": ("flowweaver.std.dedup", "simhash_deduplicate"),
+
+    "write_csv": ("flowweaver.std.io", "export_csv"),
+    "write_json": ("flowweaver.std.io", "export_json"),
+    "write_jsonl": ("flowweaver.std.io", "export_jsonl"),
+    "write_parquet": ("flowweaver.std.io", "export_parquet"),
+    "export_csv": ("flowweaver.std.io", "export_csv"),
+    "export_json": ("flowweaver.std.io", "export_json"),
+    "export_jsonl": ("flowweaver.std.io", "export_jsonl"),
+    "export_parquet": ("flowweaver.std.io", "export_parquet"),
 }
+
 
 
 
