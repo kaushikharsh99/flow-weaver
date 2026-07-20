@@ -5,6 +5,7 @@ import {
   Copy, Fingerprint,
   Languages, Sparkles, Hash, MessageSquare, Type,
   Download, Save, Send, Upload,
+  Trash2, Trash, ArrowRight, GitBranch, Layers, FolderArchive, Code2,
 } from "lucide-react";
 import type { NodeTypeDef, MockPreview } from "./types";
 
@@ -48,6 +49,21 @@ function fakeUsers(seed: string, n: number): MockPreview {
 export const NODE_TYPES: NodeTypeDef[] = [
   // ------------------ Loaders
   {
+    id: "import_dataset", label: "Import Dataset", category: "Loaders",
+    description: "Intelligent Universal Import Engine with auto format/schema/type detection",
+    icon: Sparkles, color: CAT_COLOR.Loaders,
+    inputs: [], outputs: [{ id: "out", label: "Dataset", type: "tabular" }],
+    paramsSchema: [
+      { key: "path", label: "Dataset file or folder path", type: "text", default: "data/sample.csv" },
+      { key: "format", label: "Format", type: "select", default: "auto", options: [
+        { label: "Auto-detect", value: "auto" }, { label: "CSV / TSV", value: "csv" }, { label: "JSON", value: "json" }, { label: "JSON Lines", value: "jsonl" }, { label: "Parquet", value: "parquet" }
+      ]},
+      { key: "delimiter", label: "Delimiter", type: "text", default: "," },
+      { key: "root_key", label: "Root key", type: "text", default: "" },
+    ],
+    mockOutput: (p) => fakeUsers("import" + (p.path || ""), 10),
+  },
+  {
     id: "load_csv", label: "Load CSV", category: "Loaders",
     description: "Read a CSV file from a URL or path",
     icon: FileSpreadsheet, color: CAT_COLOR.Loaders,
@@ -70,6 +86,26 @@ export const NODE_TYPES: NodeTypeDef[] = [
       { key: "root", label: "Root key", type: "text", default: "data", placeholder: "data" },
     ],
     mockOutput: (p) => fakeUsers("json" + (p.path || ""), 6),
+  },
+  {
+    id: "load_jsonl", label: "Load JSONL", category: "Loaders",
+    description: "Parse a JSON Lines file (one record per line)",
+    icon: Layers, color: CAT_COLOR.Loaders,
+    inputs: [], outputs: [{ id: "out", label: "Records", type: "tabular" }],
+    paramsSchema: [
+      { key: "path", label: "File path", type: "text", default: "data/sample.jsonl" },
+    ],
+    mockOutput: (p) => fakeUsers("jsonl" + (p.path || ""), 8),
+  },
+  {
+    id: "load_parquet", label: "Load Parquet", category: "Loaders",
+    description: "Load Parquet dataset",
+    icon: Database, color: CAT_COLOR.Loaders,
+    inputs: [], outputs: [{ id: "out", label: "Table", type: "tabular" }],
+    paramsSchema: [
+      { key: "path", label: "File path", type: "text", default: "data/sample.parquet" },
+    ],
+    mockOutput: (p) => fakeUsers("parquet" + (p.path || ""), 12),
   },
   {
     id: "http_fetch", label: "HTTP Fetch", category: "Loaders",
@@ -145,6 +181,30 @@ export const NODE_TYPES: NodeTypeDef[] = [
     },
   },
   {
+    id: "length_filter", label: "Length Filter", category: "Filters",
+    description: "Filter records by text column string length bounds",
+    icon: ArrowRight, color: CAT_COLOR.Filters,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Filtered Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+      { key: "min_len", label: "Min Length", type: "number", default: 10, min: 0 },
+      { key: "max_len", label: "Max Length", type: "number", default: 1000, min: 0 },
+    ],
+    mockOutput: (p) => fakeUsers("lenfilter" + JSON.stringify(p), 6),
+  },
+  {
+    id: "remove_empty", label: "Remove Empty Rows", category: "Filters",
+    description: "Drop rows where specified columns are empty or null",
+    icon: Trash, color: CAT_COLOR.Filters,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Cleaned Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "columns", label: "Target Columns", type: "text", default: "text" },
+    ],
+    mockOutput: (p) => fakeUsers("remempty" + JSON.stringify(p), 7),
+  },
+  {
     id: "search_text", label: "Search Text", category: "Filters",
     description: "Regex/substring filter on a text column",
     icon: Search, color: CAT_COLOR.Filters,
@@ -176,6 +236,102 @@ export const NODE_TYPES: NodeTypeDef[] = [
 
   // ------------------ Transform
   {
+    id: "lowercase", label: "Lowercase Text", category: "Transform",
+    description: "Convert a column's text values to lowercase",
+    icon: Type, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Modified Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+    ],
+    mockOutput: (p) => fakeUsers("lower" + JSON.stringify(p), 8),
+  },
+  {
+    id: "uppercase", label: "Uppercase Text", category: "Transform",
+    description: "Convert a column's text values to uppercase",
+    icon: Type, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Modified Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+    ],
+    mockOutput: (p) => fakeUsers("upper" + JSON.stringify(p), 8),
+  },
+  {
+    id: "strip_whitespace", label: "Strip Whitespace", category: "Transform",
+    description: "Strip leading/trailing whitespace",
+    icon: Scissors, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Cleaned Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+      { key: "collapse", label: "Collapse Multiple Spaces", type: "boolean", default: false },
+    ],
+    mockOutput: (p) => fakeUsers("stripws" + JSON.stringify(p), 8),
+  },
+  {
+    id: "strip_html", label: "Strip HTML", category: "Transform",
+    description: "Remove HTML tags from text column content",
+    icon: Code2, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Cleaned Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+    ],
+    mockOutput: (p) => fakeUsers("html" + JSON.stringify(p), 8),
+  },
+  {
+    id: "unicode_normalize", label: "Unicode Normalize", category: "Transform",
+    description: "Apply Unicode normalization standards (NFC, NFD, NFKC, NFKD)",
+    icon: SlidersHorizontal, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Normalized Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+      { key: "form", label: "Normalization Form", type: "select", default: "NFC", options: [
+        { label: "NFC", value: "NFC" }, { label: "NFD", value: "NFD" }, { label: "NFKC", value: "NFKC" }, { label: "NFKD", value: "NFKD" }
+      ]},
+    ],
+    mockOutput: (p) => fakeUsers("uninorm" + JSON.stringify(p), 8),
+  },
+  {
+    id: "regex_replace", label: "Regex Replace", category: "Transform",
+    description: "Perform regular expression replacement on a text column",
+    icon: Wand2, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Replaced Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+      { key: "pattern", label: "Regex Pattern", type: "text", default: "\\s+" },
+      { key: "replacement", label: "Replacement", type: "text", default: " " },
+    ],
+    mockOutput: (p) => fakeUsers("regex" + JSON.stringify(p), 8),
+  },
+  {
+    id: "chunk_text", label: "Chunk Text", category: "Transform",
+    description: "Split long text into sliding window chunks",
+    icon: Scissors, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Chunked Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "column", label: "Target Column", type: "text", default: "text" },
+      { key: "chunk_size", label: "Chunk Size", type: "number", default: 500 },
+      { key: "overlap", label: "Overlap", type: "number", default: 50 },
+    ],
+    mockOutput: (p) => fakeUsers("chunk" + JSON.stringify(p), 8),
+  },
+  {
+    id: "rename_columns", label: "Rename Columns", category: "Transform",
+    description: "Rename specific dataset columns",
+    icon: Columns3, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Renamed Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "mapping", label: "Rename Mapping (JSON)", type: "text", default: '{"old": "new"}' },
+    ],
+    mockOutput: (p) => fakeUsers("rename" + JSON.stringify(p), 8),
+  },
+  {
     id: "select_columns", label: "Select Columns", category: "Transform",
     description: "Project a subset of columns",
     icon: Columns3, color: CAT_COLOR.Transform,
@@ -195,6 +351,17 @@ export const NODE_TYPES: NodeTypeDef[] = [
     },
   },
   {
+    id: "drop_columns", label: "Drop Columns", category: "Transform",
+    description: "Remove unwanted columns from dataset",
+    icon: Trash2, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Trimmed Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "columns", label: "Columns to Drop", type: "text", default: "" },
+    ],
+    mockOutput: (p) => fakeUsers("dropcol" + JSON.stringify(p), 8),
+  },
+  {
     id: "sort_rows", label: "Sort", category: "Transform",
     description: "Sort by a column",
     icon: ArrowUpDown, color: CAT_COLOR.Transform,
@@ -212,6 +379,41 @@ export const NODE_TYPES: NodeTypeDef[] = [
       if (p.order === "desc") rows.reverse();
       return { ...base, rows, stats: { "sorted by": String(p.column || ""), "order": String(p.order || "asc") }};
     },
+  },
+  {
+    id: "shuffle", label: "Shuffle", category: "Transform",
+    description: "Randomly shuffle all rows",
+    icon: Shuffle, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Shuffled Rows", type: "tabular" }],
+    paramsSchema: [
+      { key: "seed", label: "Random Seed", type: "number", default: 42 },
+    ],
+    mockOutput: (p) => fakeUsers("shuf" + JSON.stringify(p), 8),
+  },
+  {
+    id: "split_dataset", label: "Split Dataset", category: "Transform",
+    description: "Split dataset into train/test sets by ratio",
+    icon: GitBranch, color: CAT_COLOR.Transform,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [{ id: "out", label: "Train Set", type: "tabular" }],
+    paramsSchema: [
+      { key: "ratio", label: "Train Ratio", type: "slider", default: 0.8, min: 0.0, max: 1.0, step: 0.05 },
+      { key: "seed", label: "Random Seed", type: "number", default: 42 },
+    ],
+    mockOutput: (p) => fakeUsers("splitds" + JSON.stringify(p), 8),
+  },
+  {
+    id: "concatenate", label: "Concatenate", category: "Transform",
+    description: "Vertically concatenate two datasets",
+    icon: Layers, color: CAT_COLOR.Transform,
+    inputs: [
+      { id: "first", label: "first", type: "tabular", required: true },
+      { id: "second", label: "second", type: "tabular", required: true },
+    ],
+    outputs: [{ id: "out", label: "Combined Rows", type: "tabular" }],
+    paramsSchema: [],
+    mockOutput: (p) => fakeUsers("concat" + JSON.stringify(p), 8),
   },
   {
     id: "join_rows", label: "Join", category: "Transform",
@@ -407,6 +609,28 @@ export const NODE_TYPES: NodeTypeDef[] = [
       { key: "pretty", label: "Pretty print", type: "boolean", default: true },
     ],
     mockOutput: (p) => ({ kind: "file", name: String(p.path || "out.json"), format: "JSON", size: `${(Math.random()*3+1).toFixed(1)} MB`, rows: 2100 }),
+  },
+  {
+    id: "write_jsonl", label: "Write JSON Lines", category: "Export",
+    description: "Serialize dataset records into JSON Lines format",
+    icon: Download, color: CAT_COLOR.Export,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [],
+    paramsSchema: [
+      { key: "path", label: "Output path", type: "text", default: "out/results.jsonl" },
+    ],
+    mockOutput: (p) => ({ kind: "file", name: String(p.path || "out.jsonl"), format: "JSONL", size: "1.2 MB", rows: 1000 }),
+  },
+  {
+    id: "write_parquet", label: "Write Parquet", category: "Export",
+    description: "Serialize dataset records into Parquet format",
+    icon: FolderArchive, color: CAT_COLOR.Export,
+    inputs: [{ id: "in_data", label: "Rows", type: "tabular", required: true }],
+    outputs: [],
+    paramsSchema: [
+      { key: "path", label: "Output path", type: "text", default: "out/results.parquet" },
+    ],
+    mockOutput: (p) => ({ kind: "file", name: String(p.path || "out.parquet"), format: "PARQUET", size: "3.4 MB", rows: 2500 }),
   },
   {
     id: "webhook", label: "Send Webhook", category: "Export",

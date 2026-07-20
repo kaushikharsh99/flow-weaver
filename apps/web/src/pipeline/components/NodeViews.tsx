@@ -21,12 +21,21 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function PipelineNodeInner({ id, data, selected }: NodeProps<PipelineNodeData>) {
-  const def = NODE_TYPE_MAP[data.typeId];
+  const def = NODE_TYPE_MAP[data.typeId] || {
+    id: data.typeId || "unknown",
+    label: data.title || data.typeId || "Custom Node",
+    category: "Transform" as const,
+    description: `Node type: ${data.typeId}`,
+    icon: "Boxes" as any,
+    color: "#7a4fc6",
+    inputs: [{ id: "in", label: "rows", type: "tabular" }],
+    outputs: [{ id: "out", label: "rows", type: "tabular" }],
+    paramsSchema: []
+  };
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(data.title);
   const updateTitle = useStore(s => s.updateNodeTitle);
   const setCollapsed = useStore(s => s.setNodeCollapsed);
-  if (!def) return null;
   const Icon = getIcon(def.icon);
   const collapsed = !!data.collapsed;
   const status = data.runtime.status;
