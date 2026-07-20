@@ -3,8 +3,9 @@
   "python_version": "3.11",
   "dependencies": {},
   "nodes": [
-    "load_csv",
-    "dedup_exact",
-    "write_csv"
+    "import_dataset",
+    "unicode_normalize",
+    "regex_replace",
+    "write_jsonl"
   ]
 }

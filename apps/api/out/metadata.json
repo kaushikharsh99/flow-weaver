@@ -1,26 +1,31 @@
 {
-  "pipeline_name": "6na68unh",
-  "compiled_at": "2026-07-20T07:04:48Z",
-  "execution_time_ms": 35.95,
-  "generated_loc": 447,
-  "operations_count": 3,
+  "pipeline_name": "yuc6u19c",
+  "compiled_at": "2026-07-20T08:28:47Z",
+  "execution_time_ms": 31.21,
+  "generated_loc": 437,
+  "operations_count": 4,
   "imports_count": 2,
-  "variables_count": 3,
+  "variables_count": 4,
   "requirements": [],
   "operations": [
     {
-      "id": "jteccz9f",
-      "type": "load_csv",
+      "id": "import_1",
+      "type": "import_dataset",
       "variable": "raw_dataset"
     },
     {
-      "id": "j73d7rey",
-      "type": "dedup_exact",
-      "variable": "deduplicated_dataset"
+      "id": "unicode_1",
+      "type": "unicode_normalize",
+      "variable": "normalized_dataset"
     },
     {
-      "id": "sygoe7t4",
-      "type": "write_csv",
+      "id": "clean_1",
+      "type": "regex_replace",
+      "variable": "cleaned_dataset"
+    },
+    {
+      "id": "export_1",
+      "type": "write_jsonl",
       "variable": "processed_dataset"
     }
   ]
