@@ -15,15 +15,15 @@ gantt
     
     section Core Infrastructure
     Phase 1: Freeze the Foundation     :done, a1, 2026-07-01, 20d
-    Phase 2: Frictionless Development   :active, a2, after a1, 20d
-    Phase 3: Framework Quality          :a3, after a2, 30d
+    Phase 2: Frictionless Development   :done, a2, after a1, 20d
+    Phase 3: Framework Quality          :done, a3, after a2, 30d
     
     section Node Library & Templates
-    Phase 4: First Real Node Collection :b1, after a3, 30d
-    Phase 5: Out-of-the-Box Templates   :b2, after b1, 20d
+    Phase 4: First Real Node Collection :done, b1, after a3, 30d
+    Phase 5: Out-of-the-Box Templates   :done, b2, after b1, 20d
     
     section Publishing & Polish
-    Phase 6: Documentation Website      :c1, after b2, 20d
+    Phase 6: Documentation Website      :active, c1, after b2, 20d
     Phase 7: Team Expansion & Scaling   :c2, after c1, 20d
     Phase 8: Polish & Previews          :c3, after c2, 15d
     Phase 9: Public Alpha Release       :c4, after c3, 15d
@@ -33,13 +33,13 @@ gantt
 
 ## Detailed Roadmap Phases
 
-### Phase 1 — Freeze the Foundation (Current)
+### Phase 1 — Freeze the Foundation
 **Goal:** Freeze the API specs and engine core to prevent downstream breaking changes.
 * **APIs to Freeze:**
   - Declarative Node SDK & Node metaclass decorator
   - Workspace directory auto-discovery & loading
   - REST & WebSocket communication contracts
-  - Graph compiler (Validator → Builder → Optimizer → Planner → Runner)
+  - Visual Compiler subsystem and pipeline package generators
   - `Dataset` abstract base layers (Tabular, Polars, Arrow, Streaming)
 * **Status:** Complete.
 
@@ -54,27 +54,30 @@ gantt
   - Automatic documentation (`flowweaver generate-docs`) and test scaffolds.
   - Better templates for Loader, Filter, Transform, and Exporter categories.
   - Pre-packaging validation schemas.
+* **Status:** Complete.
 
 ---
 
 ### Phase 3 — Framework Quality
 **Goal:** Elevate compiler telemetry, exception handling, and error routing for researchers.
 * **Deliverables:**
-  1. **Better Error System:** Format exceptions showing Node context, exact problem, current state, and action recommendation (e.g. Column "text" not found, available columns: title, body, summary).
-  2. **Better Logging:** Clear stage summaries (e.g. `Normalize: 1.2M rows`) with clean error output instead of raw Python interpreter stack traces.
-  3. **Progress System:** Expose real-time execution states: Starting, Running, Progress %, Finished, Failed.
-  4. **Preview Engine:** Render dataset columns, schema, row counts, and memory footprint in the frontend Inspector dynamically without exporting data.
-  5. **Pre-Run Validation:** Catch missing parameters, invalid regex values, and disconnected ports before running the engine.
+  1. **Better Error System:** Format exceptions showing Node context, exact problem, current state, and action recommendation (e.g. Column "text" not found).
+  2. **Better Logging & Timing:** Timed execution summaries (`time.time()`) and standard `logging` setup in generated Python output.
+  3. **Progress System:** Structured progress comments injected for every pipeline step (e.g., `logger.info("Step 3/8: Normalize Text to Lowercase")`).
+  4. **Preview Engine:** Render dataset columns, schema, row counts, and memory footprint in the frontend Inspector dynamically.
+  5. **Pre-Run Validation**: Kahn's sorter cycle checks and parameter validation prior to compilation.
+* **Status:** Complete.
 
 ---
 
 ### Phase 4 — First Real Node Collection
 **Goal:** Hand-craft 20 high-fidelity nodes representing typical AI dataset cleaning tasks.
-* **Loaders:** CSV, JSON, JSONL, Parquet, Hugging Face Dataset
-* **Cleaning:** Lowercase, Strip HTML, Remove Empty, Unicode Normalize, Regex Replace
-* **Filters:** Length Filter, Language Filter, Duplicate Filter
-* **Transform:** Tokenizer, Chunking/Splitting, Column Renamer
-* **Export:** CSV, JSONL, Parquet, HF Dataset Upload
+* **Loaders:** CSV, JSON, JSONL, Parquet
+* **Cleaning:** Lowercase, Uppercase, Strip HTML, Remove Empty, Unicode Normalize, Regex Replace, Strip Whitespace
+* **Filters:** Generic Filter, Length Filter, Duplicate Filter (xxHash, SimHash near-duplicate, MinHash Jaccard sets)
+* **Transform:** Select Columns, Rename Columns, Drop Columns, Sort Rows, Shuffle, Split Dataset, Concatenate, Statistics
+* **Export:** CSV, JSONL, Parquet
+* **Status:** Complete.
 
 ---
 
@@ -87,6 +90,7 @@ gantt
   - ShareGPT Preprocessing
   - OCR Output Post-Processing
   - Common Crawl Filtering
+* **Status:** Complete.
 
 ---
 
