@@ -124,6 +124,12 @@ class PipelineCompiler:
             out_var = ctx.variables.generate_var(node_id=n_id, prefix="dataset")
             node_var_map[n_id] = out_var.name
 
+            ctx.current_node_id = n_id
+            ctx.input_var = input_var
+            ctx.output_var = out_var.name
+            ctx.current_params = params
+
+
             # Check registry for compile implementation or fallback generator
             node_instance = registry.get(type_id)
             if node_instance and hasattr(node_instance, "compile") and callable(node_instance.compile):
@@ -138,6 +144,7 @@ class PipelineCompiler:
                     )
                     ir.operations.append(op)
                     continue
+
 
             # Default Operation IR Construction
             if type_id in NODE_MODULE_MAP:

@@ -1,42 +1,7 @@
+import json
 from typing import Dict, Any
 from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext
-from app.engine.nodes.core_logic import tokenize_text_column, chunk_text_column, rename_dataset_columns
-
-@node(name="Tokenize Text", category="Transform", icon="Scissors", description="Tokenize text column into word or sentence tokens lists")
-class TokenizeNode(Node):
-    id = "tokenize"
-    in_data = Input.tabular(label="Rows")
-    out = Output.tabular(label="Tokenized Rows")
-    
-    column = Param.column(label="Target Column", default="text")
-    mode = Param.select(label="Tokenization Mode", default="word", options=[
-        {"label": "Word Tokenization", "value": "word"},
-        {"label": "Sentence Tokenization", "value": "sentence"}
-    ])
-
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        dataset = inputs.get("in_data")
-        col = ctx.parameters.get("column", "")
-        mode = ctx.parameters.get("mode", "word")
-        return {"out": tokenize_text_column(dataset, col, mode)}
-
-
-@node(name="Text Chunking", category="Transform", icon="Layers", description="Chunk long text columns using a sliding word window for RAG prep")
-class ChunkTextNode(Node):
-    id = "chunk_text"
-    in_data = Input.tabular(label="Rows")
-    out = Output.tabular(label="Chunked Rows")
-    
-    column = Param.column(label="Target Column", default="text")
-    chunk_size = Param.number(label="Chunk Size (words)", default=100, min=1)
-    chunk_overlap = Param.number(label="Overlap Size (words)", default=10, min=0)
-
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        dataset = inputs.get("in_data")
-        col = ctx.parameters.get("column", "")
-        size = int(ctx.parameters.get("chunk_size", 100))
-        overlap = int(ctx.parameters.get("chunk_overlap", 10))
-        return {"out": chunk_text_column(dataset, col, size, overlap)}
+from flowweaver.std import tabular, text
 
 
 @node(name="Rename Columns", category="Transform", icon="Columns3", description="Rename specific dataset columns")
@@ -47,9 +12,39 @@ class RenameColumnsNode(Node):
     
     mapping = Param.json(label="Rename Mapping (JSON)", default='{"old_name": "new_name"}', description="A JSON dictionary mapping old_name to new_name keys")
 
+    def compile(self, ctx: Any) -> Any:
+        mapping_str = ctx.current_params.get("mapping", '{"old_name": "new_name"}')
+        try:
+            mapping = json.loads(mapping_str) if isinstance(mapping_str, str) else mapping_str
+        except Exception:
+            mapping = {"old_name": "new_name"}
+        return ctx.call("flowweaver.std.tabular.rename_columns", ctx.input_var, rename_map=mapping)
+
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         dataset = inputs.get("in_data")
-        mapping_str = ctx.parameters.get("mapping", "{}")
-        import json
-        mapping = json.loads(mapping_str)
-        return {"out": rename_dataset_columns(dataset, mapping)}
+        mapping_str = ctx.parameters.get("mapping", '{"old_name": "new_name"}')
+        try:
+            mapping = json.loads(mapping_str) if isinstance(mapping_str, str) else mapping_str
+        except Exception:
+            mapping = {}
+        return {"out": tabular.rename_columns(dataset, rename_map=mapping)}
+
+
+@node(name="Select Columns", category="Transform", icon="Columns", description="Select target columns")
+class SelectColumnsNode(Node):
+    id = "select_columns"
+    in_data = Input.tabular(label="Rows")
+    out = Output.tabular(label="Selected Rows")
+    
+    columns = Param.text(label="Columns (comma-separated)", default="text", description="e.g. id, text")
+
+    def compile(self, ctx: Any) -> Any:
+        cols_str = ctx.current_params.get("columns", "text")
+        cols = [c.strip() for c in cols_str.split(",") if c.strip()]
+        return ctx.call("flowweaver.std.tabular.select_columns", ctx.input_var, columns=cols)
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        dataset = inputs.get("in_data")
+        cols_str = ctx.parameters.get("columns", "text")
+        cols = [c.strip() for c in cols_str.split(",") if c.strip()]
+        return {"out": tabular.select_columns(dataset, columns=cols)}
