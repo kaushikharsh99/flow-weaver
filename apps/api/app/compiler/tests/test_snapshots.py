@@ -109,4 +109,12 @@ def test_llm_finetuning_pipeline_snapshot():
         assert "from flowweaver.std.io import import_dataset" in res.script
         assert "from flowweaver.std.text import lowercase" in res.script
 
+        # Verify beautiful section-separated formatting
+        assert "# Step 1: Import Dataset" in res.script
+        assert "# Step 2: Normalize Text to Lowercase" in res.script
+        assert "# Step 3: Apply Unicode Normalization" in res.script
+        assert "# " + "-" * 56 in res.script
 
+        # Verify semantic variable names
+        assert "raw_dataset = import_dataset" in res.script
+        assert "normalized_dataset = lowercase" in res.script

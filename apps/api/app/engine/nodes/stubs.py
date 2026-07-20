@@ -2,6 +2,14 @@
 
 Each node is self-describing using the declarative @node decorator.
 They are auto-discovered by the registry — no manual registration needed.
+
+NOTE: Nodes that have real implementations live in their respective modules:
+  - cleaning.py (lowercase, regex_replace, remove_empty, strip_html, unicode_normalize)
+  - filters.py (filter_rows, length_filter, dedup_exact, sample_rows)
+  - transform.py (rename_columns, select_columns, drop_columns, sort_rows, shuffle, split_dataset, concatenate)
+  - exports.py (write_csv, write_jsonl, write_parquet)
+  - import_dataset.py (import_dataset)
+  - loaders.py (load_csv, load_json, load_jsonl, load_parquet)
 """
 import time
 import random
@@ -10,7 +18,7 @@ from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext, T
 
 
 # ---------------------------------------------------------------------------
-# Loaders
+# Loaders (External Services — Genuine Stubs)
 # ---------------------------------------------------------------------------
 
 @node(name="HTTP Fetch", category="Loaders", icon="Globe", description="Fetch data from a REST endpoint")
@@ -69,7 +77,7 @@ class LoadImagesNode(Node):
 
 
 # ---------------------------------------------------------------------------
-# Filters
+# Filters (Advanced — Genuine Stubs)
 # ---------------------------------------------------------------------------
 
 @node(name="Search Text", category="Filters", icon="Search", description="Regex/substring filter on a text column")
@@ -87,53 +95,9 @@ class SearchTextNode(Node):
         return {"output": out}
 
 
-@node(name="Sample", category="Filters", icon="Shuffle", description="Randomly sample N rows")
-class SampleRowsNode(Node):
-    id = "sample_rows"
-    rows = Input.tabular(label="rows")
-    output = Output.tabular(label="rows")
-    count = Param.number(label="Sample Size", default=100, min=1, max=100000)
-    seed = Param.number(label="Random Seed", default=42)
-
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        ctx.log("Sampling rows (stub)")
-        time.sleep(0.2 + random.random() * 0.3)
-        out = inputs.get("rows", TabularDataset([], columns=[]))
-        return {"output": out}
-
-
 # ---------------------------------------------------------------------------
-# Transform
+# Transform (Advanced — Genuine Stubs)
 # ---------------------------------------------------------------------------
-
-@node(name="Select Columns", category="Transform", icon="Columns3", description="Project a subset of columns")
-class SelectColumnsNode(Node):
-    id = "select_columns"
-    rows = Input.tabular(label="rows")
-    output = Output.tabular(label="rows")
-    columns = Param.text(label="Columns", placeholder="col1, col2, col3")
-
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        ctx.log("Selecting columns (stub)")
-        time.sleep(0.2 + random.random() * 0.3)
-        out = inputs.get("rows", TabularDataset([], columns=[]))
-        return {"output": out}
-
-
-@node(name="Sort", category="Transform", icon="ArrowUpDown", description="Sort by a column")
-class SortRowsNode(Node):
-    id = "sort_rows"
-    rows = Input.tabular(label="rows")
-    output = Output.tabular(label="rows")
-    column = Param.column(label="Sort Column")
-    ascending = Param.boolean(label="Ascending", default=True)
-
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        ctx.log("Sorting rows (stub)")
-        time.sleep(0.2 + random.random() * 0.3)
-        out = inputs.get("rows", TabularDataset([], columns=[]))
-        return {"output": out}
-
 
 @node(name="Join", category="Transform", icon="GitMerge", description="Join two tables on a key")
 class JoinRowsNode(Node):
@@ -187,7 +151,7 @@ class MapExprNode(Node):
 
 
 # ---------------------------------------------------------------------------
-# Dedup
+# Dedup (Advanced — Genuine Stubs)
 # ---------------------------------------------------------------------------
 
 @node(name="Dedup Fuzzy", category="Dedup", icon="Fingerprint", description="Fuzzy-match near duplicates")
@@ -206,7 +170,7 @@ class DedupFuzzyNode(Node):
 
 
 # ---------------------------------------------------------------------------
-# NLP
+# NLP (Genuine Stubs — Require ML Dependencies)
 # ---------------------------------------------------------------------------
 
 @node(name="Detect Language", category="NLP", icon="Languages", description="Identify text language")
@@ -267,7 +231,7 @@ class SummarizeNode(Node):
 
 
 # ---------------------------------------------------------------------------
-# Export
+# Export (External Services — Genuine Stubs)
 # ---------------------------------------------------------------------------
 
 @node(name="Send Webhook", category="Export", icon="Send", description="POST rows to an endpoint")

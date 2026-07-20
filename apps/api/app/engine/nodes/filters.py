@@ -76,3 +76,23 @@ class DedupNode(Node):
         if method == "simhash":
             return {"out": dedup.simhash_deduplicate(dataset, column=col, threshold=3)}
         return {"out": dedup.dedup_exact(dataset)}
+
+
+@node(name="Sample", category="Filters", icon="Shuffle", description="Randomly sample N rows")
+class SampleRowsNode(Node):
+    id = "sample_rows"
+    rows = Input.tabular(label="rows")
+    output = Output.tabular(label="rows")
+    count = Param.number(label="Sample Size", default=100, min=1, max=100000)
+    seed = Param.number(label="Random Seed", default=42)
+
+    def compile(self, ctx: Any) -> Any:
+        count = ctx.current_params.get("count", 100)
+        seed = ctx.current_params.get("seed", 42)
+        return ctx.dataset().sample_rows(n=count, seed=seed)
+
+    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
+        dataset = inputs.get("rows")
+        count = ctx.parameters.get("count", 100)
+        seed = ctx.parameters.get("seed", 42)
+        return {"output": tabular.sample_rows(dataset, n=count, seed=seed)}

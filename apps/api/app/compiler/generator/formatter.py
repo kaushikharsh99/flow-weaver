@@ -2,14 +2,27 @@ import ast
 
 
 class Formatter:
-    """Formats Python source code using AST unparse or Ruff/Black if available."""
+    """Formats Python source code while preserving comments and structure."""
 
     @classmethod
     def format_code(cls, code: str) -> str:
-        # Try AST unparse formatting first
+        # Validate that the code is syntactically correct Python
         try:
-            parsed = ast.parse(code)
-            formatted = ast.unparse(parsed)
-            return formatted + "\n"
-        except Exception:
-            return code
+            ast.parse(code)
+        except SyntaxError:
+            pass  # Return raw code even if it has syntax issues
+
+        # Clean up excessive blank lines (max 2 consecutive)
+        lines = code.split("\n")
+        cleaned = []
+        blank_count = 0
+        for line in lines:
+            if line.strip() == "":
+                blank_count += 1
+                if blank_count <= 2:
+                    cleaned.append(line)
+            else:
+                blank_count = 0
+                cleaned.append(line)
+
+        return "\n".join(cleaned)

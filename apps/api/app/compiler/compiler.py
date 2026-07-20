@@ -29,6 +29,12 @@ NODE_MODULE_MAP = {
     "rename_columns": ("flowweaver.std.tabular", "rename_columns"),
     "filter_rows": ("flowweaver.std.tabular", "filter_rows"),
     "sort_rows": ("flowweaver.std.tabular", "sort_rows"),
+    "drop_columns": ("flowweaver.std.tabular", "drop_columns"),
+    "sample_rows": ("flowweaver.std.tabular", "sample_rows"),
+    "shuffle": ("flowweaver.std.tabular", "shuffle"),
+    "split_dataset": ("flowweaver.std.tabular", "split_dataset"),
+    "concatenate": ("flowweaver.std.tabular", "concatenate"),
+    "statistics": ("flowweaver.std.tabular", "statistics"),
 
     "dedup_exact": ("flowweaver.std.dedup", "dedup_exact"),
     "simhash_deduplicate": ("flowweaver.std.dedup", "simhash_deduplicate"),

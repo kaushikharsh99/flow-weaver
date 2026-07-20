@@ -27,6 +27,12 @@ NODE_SEMANTIC_PREFIX_MAP = {
 
     "select_columns": "transformed_dataset",
     "rename_columns": "transformed_dataset",
+    "drop_columns": "transformed_dataset",
+    "sample_rows": "sampled_dataset",
+    "shuffle": "shuffled_dataset",
+    "split_dataset": "training_dataset",
+    "concatenate": "combined_dataset",
+    "statistics": "statistics_dataset",
 
     "write_csv": "processed_dataset",
     "write_jsonl": "processed_dataset",
