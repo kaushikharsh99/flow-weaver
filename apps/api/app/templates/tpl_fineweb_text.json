@@ -1,0 +1,58 @@
+{
+  "id": "official_fineweb_pipeline",
+  "name": "FineWeb Web Text Preprocessing Pipeline",
+  "description": "Production web corpus preprocessing pipeline: Strip HTML, Unicode NFC, length filter, and SimHash near-deduplication.",
+  "nodes": [
+    {
+      "id": "import_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "import_dataset",
+        "title": "Import FineWeb Corpus",
+        "params": {"path": "data/fineweb_sample.parquet"}
+      }
+    },
+    {
+      "id": "html_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "strip_html",
+        "title": "Strip HTML Tags",
+        "params": {"column": "text"}
+      }
+    },
+    {
+      "id": "unicode_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "unicode_normalize",
+        "title": "Normalize Unicode NFC",
+        "params": {"column": "text", "form": "NFC"}
+      }
+    },
+    {
+      "id": "dedup_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "dedup_exact",
+        "title": "SimHash Near-Dedup",
+        "params": {"method": "simhash", "column": "text"}
+      }
+    },
+    {
+      "id": "export_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "write_parquet",
+        "title": "Export Prepared Parquet",
+        "params": {"path": "out/fineweb_clean.parquet"}
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "import_1", "target": "html_1"},
+    {"id": "e2", "source": "html_1", "target": "unicode_1"},
+    {"id": "e3", "source": "unicode_1", "target": "dedup_1"},
+    {"id": "e4", "source": "dedup_1", "target": "export_1"}
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "official_tinystories_pipeline",
+  "name": "TinyStories Dataset Preprocessing Pipeline",
+  "description": "Production preprocessing pipeline for TinyStories dataset: Unicode NFC normalization, whitespace cleaning, and JSONL export.",
+  "nodes": [
+    {
+      "id": "import_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "import_dataset",
+        "title": "Import TinyStories Raw Data",
+        "params": {"path": "/run/media/harsh/STORAGE/Tiny-Stories-Original/TinyStories_all_data"}
+      }
+    },
+    {
+      "id": "unicode_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "unicode_normalize",
+        "title": "Unicode NFC Normalization",
+        "params": {"column": "story", "form": "NFC"}
+      }
+    },
+    {
+      "id": "clean_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "regex_replace",
+        "title": "Clean Whitespace",
+        "params": {"column": "story", "pattern": "\\s+", "replacement": " "}
+      }
+    },
+    {
+      "id": "export_1",
+      "type": "pipelineNode",
+      "data": {
+        "typeId": "write_jsonl",
+        "title": "Export Prepared JSONL",
+        "params": {"path": "out/tinystories_prep.jsonl"}
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "import_1", "target": "unicode_1"},
+    {"id": "e2", "source": "unicode_1", "target": "clean_1"},
+    {"id": "e3", "source": "clean_1", "target": "export_1"}
+  ]
+}
