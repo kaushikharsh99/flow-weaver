@@ -114,6 +114,9 @@ interface PipelineStore {
   // save/load
   exportJSON: () => string;
   importJSON: (json: string) => void;
+  applyTemplate: (template: any) => void;
+  fitViewTrigger: number;
+  triggerFitView: () => void;
 
   // persistence (async, via API)
   savePipelineToServer: () => Promise<void>;
@@ -153,6 +156,7 @@ export const useStore = create<PipelineStore>((set, get) => {
     clipboard: [],
     history: [],
     future: [],
+    fitViewTrigger: 0,
 
     activeTab: () => {
       const s = get();
@@ -480,6 +484,39 @@ export const useStore = create<PipelineStore>((set, get) => {
         pipelineId: data.id || null,
         selectedIds: [],
       }));
+    },
+    applyTemplate: (template) => {
+      const pData = template.pipelineData || template.pipeline_data;
+      if (!pData || !Array.isArray(pData.nodes)) {
+        console.error("Invalid template data", template);
+        return;
+      }
+      const nodes: PipelineNode[] = pData.nodes.map((n: any, idx: number) => ({
+        id: n.id,
+        type: n.type || 'pipelineNode',
+        position: n.position || { x: 150 + idx * 300, y: 200 },
+        data: {
+          ...n.data,
+          runtime: { status: 'idle' as NodeStatus }
+        },
+      }));
+      const edges: Edge[] = (pData.edges || []).map((e: any) => ({
+        ...e,
+        type: 'smoothstep'
+      }));
+
+      set(state => ({
+        tabs: state.tabs.map(t => t.id === state.activeTabId ? { ...t, name: template.name, nodes, edges } : t),
+        pipelineId: null,
+        selectedIds: [],
+        history: [],
+        future: [],
+      }));
+
+      get().triggerFitView();
+    },
+    triggerFitView: () => {
+      set(state => ({ fitViewTrigger: state.fitViewTrigger + 1 }));
     },
 
     savePipelineToServer: async () => {

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import {
-  Play, Square, Undo2, Redo2, Save, Upload, X, Plus, Sun, Moon, Command as CommandIcon, Grid3x3, Zap, Code2,
+  Play, Square, Undo2, Redo2, Save, Upload, X, Plus, Sun, Moon, Command as CommandIcon, Grid3x3, Zap, Code2, LayoutGrid,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { useStore } from "../store";
 import { runPipeline } from "../runner";
 import { cn } from "@/lib/utils";
 import { CompileViewerModal } from "./CompileViewerModal";
+import { TemplateGalleryModal } from "./TemplateGalleryModal";
 
 export function Toolbar() {
   const tabs = useStore(s => s.tabs);
@@ -36,6 +37,7 @@ export function Toolbar() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [compiledScript, setCompiledScript] = useState("");
   const [compileModalOpen, setCompileModalOpen] = useState(false);
+  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
@@ -143,6 +145,14 @@ export function Toolbar() {
         <button onClick={addTab} className="p-1 rounded hover:bg-white/5 text-white/50 hover:text-white/80" title="New pipeline">
           <Plus size={13} />
         </button>
+        <button
+          onClick={() => setTemplateGalleryOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-white/5 text-white/50 hover:text-white/80 border border-transparent hover:border-white/10 transition-colors ml-1.5"
+          title="Template Gallery"
+        >
+          <LayoutGrid size={13} />
+          <span className="text-[11px] font-medium">Templates</span>
+        </button>
       </div>
 
       <div className="flex-1" />
@@ -246,6 +256,11 @@ export function Toolbar() {
         onClose={() => setCompileModalOpen(false)}
         script={compiledScript}
         pipelineName={activeTab.name}
+      />
+
+      <TemplateGalleryModal
+        isOpen={templateGalleryOpen}
+        onClose={() => setTemplateGalleryOpen(false)}
       />
     </div>
   );

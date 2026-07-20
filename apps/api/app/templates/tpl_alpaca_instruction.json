@@ -6,6 +6,7 @@
     {
       "id": "import_1",
       "type": "pipelineNode",
+      "position": { "x": 100, "y": 200 },
       "data": {
         "typeId": "import_dataset",
         "title": "Import Alpaca Dataset",
@@ -15,6 +16,7 @@
     {
       "id": "lowercase_1",
       "type": "pipelineNode",
+      "position": { "x": 400, "y": 200 },
       "data": {
         "typeId": "lowercase",
         "title": "Lowercase Instruction Text",
@@ -24,6 +26,7 @@
     {
       "id": "filter_1",
       "type": "pipelineNode",
+      "position": { "x": 700, "y": 200 },
       "data": {
         "typeId": "remove_empty",
         "title": "Filter Empty Instructions",
@@ -33,6 +36,7 @@
     {
       "id": "dedup_1",
       "type": "pipelineNode",
+      "position": { "x": 1000, "y": 200 },
       "data": {
         "typeId": "dedup_exact",
         "title": "Deduplicate Exact Matches",
@@ -42,6 +46,7 @@
     {
       "id": "export_1",
       "type": "pipelineNode",
+      "position": { "x": 1300, "y": 200 },
       "data": {
         "typeId": "write_jsonl",
         "title": "Export Prepared Instruction JSONL",

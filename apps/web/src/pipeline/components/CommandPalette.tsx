@@ -89,26 +89,7 @@ export function CommandPalette() {
       hint: "Template", 
       run: () => {
         if (t.pipelineData && confirm(`Apply template "${t.name}"? Current canvas nodes in this tab will be replaced.`)) {
-          const store = useStore.getState();
-          store.pushHistory();
-          const nodes = t.pipelineData.nodes.map((n: any) => ({
-            id: n.id,
-            type: n.type || 'pipelineNode',
-            position: n.position,
-            data: {
-              ...n.data,
-              runtime: { status: 'idle' }
-            }
-          }));
-          const edges = t.pipelineData.edges.map((e: any) => ({
-            ...e,
-            type: 'smoothstep'
-          }));
-          useStore.setState({
-            tabs: store.tabs.map(tab => tab.id === store.activeTabId ? { ...tab, name: t.name, nodes, edges } : tab),
-            pipelineId: null, // Clear to force new pipeline creation on run
-            selectedIds: []
-          });
+          useStore.getState().applyTemplate(t);
           toast.success(`Template "${t.name}" applied successfully.`);
           setOpen(false);
         }
