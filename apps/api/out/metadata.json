@@ -1,31 +1,31 @@
 {
-  "pipeline_name": "cuk8wvd3",
-  "compiled_at": "2026-07-20T06:01:51Z",
-  "execution_time_ms": 0.65,
+  "pipeline_name": "72p6ysmj",
+  "compiled_at": "2026-07-20T06:08:57Z",
+  "execution_time_ms": 1.59,
   "generated_loc": 39,
   "operations_count": 4,
   "imports_count": 3,
   "variables_count": 4,
   "operations": [
     {
-      "id": "74p1sagm",
-      "type": "load_json",
+      "id": "cm589bac",
+      "type": "load_csv",
       "variable": "raw_dataset"
     },
     {
-      "id": "nqymnu2t",
-      "type": "search_text",
-      "variable": "dataset"
+      "id": "gtbw7l50",
+      "type": "sample_rows",
+      "variable": "sampled_dataset"
     },
     {
-      "id": "m2sv563u",
+      "id": "qfg63uzg",
       "type": "dedup_exact",
       "variable": "deduplicated_dataset"
     },
     {
-      "id": "s77eu9xh",
-      "type": "write_json",
-      "variable": "dataset_1"
+      "id": "7qvqekrv",
+      "type": "write_csv",
+      "variable": "processed_dataset"
     }
   ]
 }

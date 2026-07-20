@@ -1,37 +1,37 @@
 """
 FlowWeaver Generated Preprocessing Script
-Pipeline: cuk8wvd3
-Generated: 2026-07-20 06:01:51 UTC
+Pipeline: 72p6ysmj
+Generated: 2026-07-20 06:08:57 UTC
 
 This script was compiled from a visual FlowWeaver pipeline.
-It is fully standalone and can be run with: python cuk8wvd3.py
+It is fully standalone and can be run with: python 72p6ysmj.py
 """
 
 
-from flowweaver.std.io import import_dataset, export_json
-from flowweaver.search import search_text
+from flowweaver.std.io import import_dataset, export_csv
+from flowweaver.std.tabular import sample_rows
 from flowweaver.std.dedup import dedup_exact
 
 def main():
     # --------------------------------------------------------
-    # Step 1: Import JSON Dataset
+    # Step 1: Import CSV Dataset
     # --------------------------------------------------------
-    raw_dataset = import_dataset(path='data/records.json', root_key='')
+    raw_dataset = import_dataset(path='data/users.csv', delimiter=',')
 
     # --------------------------------------------------------
-    # Step 2: Search Text
+    # Step 2: Sample Random Subset of Rows
     # --------------------------------------------------------
-    dataset = search_text(raw_dataset, column='email', pattern='@acme\\.com$', regex=True)
+    sampled_dataset = sample_rows(raw_dataset, n=100, seed=42)
 
     # --------------------------------------------------------
     # Step 3: Deduplicate Records
     # --------------------------------------------------------
-    deduplicated_dataset = dedup_exact(dataset)
+    deduplicated_dataset = dedup_exact(sampled_dataset)
 
     # --------------------------------------------------------
-    # Step 4: Write Json
+    # Step 4: Export to CSV
     # --------------------------------------------------------
-    dataset_1 = export_json(deduplicated_dataset, path='out/results.json', pretty=True)
+    processed_dataset = export_csv(deduplicated_dataset, path='out/results.csv')
 
 
 if __name__ == "__main__":
