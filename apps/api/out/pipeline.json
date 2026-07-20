@@ -1,75 +1,91 @@
 {
   "$schema": "https://flowweaver.dev/schemas/pipeline/v1.json",
   "version": "1.0.0",
-  "id": "6na68unh",
-  "name": "My Pipeline",
+  "id": "yuc6u19c",
+  "name": "TinyStories Dataset Preprocessing Pipeline",
   "description": "",
-  "createdAt": "2026-07-20T07:04:48.590Z",
-  "updatedAt": "2026-07-20T07:04:48.590Z",
+  "createdAt": "2026-07-20T08:28:47.682Z",
+  "updatedAt": "2026-07-20T08:28:47.682Z",
   "nodes": [
     {
-      "id": "jteccz9f",
+      "id": "import_1",
       "type": "pipelineNode",
       "position": {
-        "x": -202.79072370692484,
-        "y": 382.03440790230826
+        "x": 100,
+        "y": 200
       },
       "data": {
-        "typeId": "load_csv",
-        "title": "Load CSV",
+        "typeId": "import_dataset",
+        "title": "Import TinyStories Raw Data",
         "params": {
-          "path": "data/users.csv",
-          "delimiter": ",",
-          "header": true
+          "path": "/run/media/harsh/STORAGE/Tiny-Stories-Original/TinyStories_all_data"
         }
       }
     },
     {
-      "id": "j73d7rey",
+      "id": "unicode_1",
       "type": "pipelineNode",
       "position": {
-        "x": 86.35854324714398,
-        "y": 418.3522274425273
+        "x": 400,
+        "y": 200
       },
       "data": {
-        "typeId": "dedup_exact",
-        "title": "Dedup Exact",
+        "typeId": "unicode_normalize",
+        "title": "Unicode NFC Normalization",
         "params": {
-          "keys": "email"
+          "column": "story",
+          "form": "NFC"
         }
       }
     },
     {
-      "id": "sygoe7t4",
+      "id": "clean_1",
       "type": "pipelineNode",
       "position": {
-        "x": 349.90164878605356,
-        "y": 386.9054192464029
+        "x": 700,
+        "y": 200
       },
       "data": {
-        "typeId": "write_csv",
-        "title": "Write CSV",
+        "typeId": "regex_replace",
+        "title": "Clean Whitespace",
         "params": {
-          "path": "out/results.csv",
-          "compress": false
+          "column": "story",
+          "pattern": "\\s+",
+          "replacement": " "
+        }
+      }
+    },
+    {
+      "id": "export_1",
+      "type": "pipelineNode",
+      "position": {
+        "x": 1000,
+        "y": 200
+      },
+      "data": {
+        "typeId": "write_jsonl",
+        "title": "Export Prepared JSONL",
+        "params": {
+          "path": "out/tinystories_prep.jsonl"
         }
       }
     }
   ],
   "edges": [
     {
-      "id": "reactflow__edge-jteccz9fout-j73d7reyin",
-      "source": "jteccz9f",
-      "target": "j73d7rey",
-      "sourceHandle": "out",
-      "targetHandle": "in"
+      "id": "e1",
+      "source": "import_1",
+      "target": "unicode_1"
     },
     {
-      "id": "reactflow__edge-j73d7reyout-sygoe7t4in",
-      "source": "j73d7rey",
-      "target": "sygoe7t4",
-      "sourceHandle": "out",
-      "targetHandle": "in"
+      "id": "e2",
+      "source": "unicode_1",
+      "target": "clean_1"
+    },
+    {
+      "id": "e3",
+      "source": "clean_1",
+      "target": "export_1"
     }
   ],
   "variables": {},

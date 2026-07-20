@@ -1,22 +1,22 @@
 """
 FlowWeaver Generated Preprocessing Script
-Pipeline: 6na68unh
-Generated: 2026-07-20 07:04:48 UTC
+Pipeline: yuc6u19c
+Generated: 2026-07-20 08:28:47 UTC
 
 This script was compiled from a visual FlowWeaver pipeline.
-It is fully standalone and can be run with: python 6na68unh.py
+It is fully standalone and can be run with: python yuc6u19c.py
 """
 
 
-import argparse
-import logging
-import time
-
 import abc
+import argparse
 import csv
 import json
+import logging
 import os
+import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -55,9 +55,6 @@ class DatasetSchema:
                 dtype = 'struct'
             cols.append(ColumnSchema(name=name, data_type=dtype, nullable=val is None))
         return cls(columns=cols)
-
-    def names(self) -> List[str]:
-        return [c.name for c in self.columns]
 
 @dataclass
 class DatasetMetadata:
@@ -116,19 +113,6 @@ class Dataset(abc.ABC):
         """Return number of rows if known, or None."""
         pass
 
-    def preview(self, limit: int=5) -> Dict[str, Any]:
-        """Returns structured preview payload including sample rows, schema, and metadata."""
-        records = self.to_list()
-        sample = records[:limit]
-        return {'rows': sample, 'columns': self.columns(), 'schema': [c.__dict__ for c in self.schema.columns], 'row_count': len(records), 'metadata': self.metadata.__dict__, 'history': [h.__dict__ for h in self.history]}
-
-    def statistics(self) -> Dict[str, Any]:
-        """Computes summary statistics for dataset columns."""
-        records = self.to_list()
-        cols = self.columns()
-        null_counts = self.nulls()
-        return {'row_count': len(records), 'column_count': len(cols), 'memory_bytes': self.memory(), 'null_counts': null_counts, 'columns': cols}
-
     def nulls(self) -> Dict[str, int]:
         """Calculates missing/null count for each column."""
         records = self.to_list()
@@ -146,29 +130,6 @@ class Dataset(abc.ABC):
         import sys
         records = self.to_list()
         return sum((sys.getsizeof(r) + sum((sys.getsizeof(k) + sys.getsizeof(v) for k, v in r.items())) for r in records)) if records else 0
-
-    def sample(self, n: int=5) -> 'Dataset':
-        """Returns a sampled subset of records as a new Dataset."""
-        records = self.to_list()
-        sample_data = records[:min(n, len(records))]
-        return TabularDataset(sample_data, columns=self.columns(), metadata=self.metadata, history=self.history)
-
-    def save(self, path: str) -> 'Dataset':
-        """Auto-detects output format from file extension and exports dataset."""
-        from flowweaver.std import io
-        if path.endswith('.csv'):
-            return io.export_csv(self, path)
-        elif path.endswith('.json'):
-            return io.export_json(self, path)
-        elif path.endswith('.parquet'):
-            return io.export_parquet(self, path)
-        else:
-            return io.export_jsonl(self, path)
-
-    def to_polars(self) -> Any:
-        """Convert dataset to a Polars DataFrame. Loaded lazily."""
-        import polars as pl
-        return pl.DataFrame(self.to_list())
 
     def to_arrow(self) -> Any:
         """Convert dataset to a PyArrow Table. Loaded lazily."""
@@ -233,9 +194,6 @@ class PolarsDataset(Dataset):
     def row_count(self) -> Optional[int]:
         return self.df.height
 
-    def to_polars(self) -> Any:
-        return self.df
-
     def to_arrow(self) -> Any:
         return self.df.to_arrow()
 
@@ -261,10 +219,6 @@ class ArrowDataset(Dataset):
     def row_count(self) -> Optional[int]:
         return self.table.num_rows
 
-    def to_polars(self) -> Any:
-        import polars as pl
-        return pl.from_arrow(self.table)
-
     def to_arrow(self) -> Any:
         return self.table
 
@@ -282,114 +236,141 @@ def validate_dataset(dataset: Any) -> Dataset:
         raise TypeError(f'Expected input to be an instance of flowweaver.std.Dataset, got {type(dataset).__name__}')
     return dataset
 
-def validate_columns_exist(dataset: Dataset, columns: List[str]) -> None:
-    """Ensures all specified columns exist in the dataset."""
-    cols = set(dataset.columns())
-    missing = [c for c in columns if c not in cols]
-    if missing:
-        raise ValueError(f'Columns {missing} not found in dataset columns: {list(cols)}')
+def validate_column_exists(dataset: Dataset, column: str) -> None:
+    """Ensures the specified column exists in the dataset."""
+    cols = dataset.columns()
+    if column not in cols:
+        raise ValueError(f"Column '{column}' not found in dataset columns: {cols}")
 
 # ======================================================
 # Pipeline Standard Operations
 # ======================================================
 def import_dataset(path: str, format: Optional[str]=None, delimiter: str=',', root_key: str='', encoding: str='utf-8') -> Dataset:
-    """Universal Dataset Loader. Auto-detects structure and returns a FlowWeaver Dataset instance."""
+    """Universal Dataset Loader. Delegates to format-specific loaders."""
     if not os.path.exists(path):
         raise FileNotFoundError(f'Dataset file not found: {path}')
     ext = format.lower() if format else os.path.splitext(path)[1].lstrip('.').lower()
     if ext == 'json':
-        with open(path, 'r', encoding=encoding) as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            if root_key and root_key in data and isinstance(data[root_key], list):
-                data = data[root_key]
-            else:
-                for k in ('data', 'items', 'records', 'stories', 'train', 'documents'):
-                    if k in data and isinstance(data[k], list):
-                        data = data[k]
-                        break
-        if not isinstance(data, list):
-            data = [data]
-        cols = list(data[0].keys()) if data and isinstance(data[0], dict) else []
-        dataset = TabularDataset(data, columns=cols)
+        return import_json_dataset(path, root_key=root_key, encoding=encoding)
     elif ext in ('jsonl', 'ndjson'):
-        rows = []
-        with open(path, 'r', encoding=encoding) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    rows.append(json.loads(line))
-        cols = list(rows[0].keys()) if rows else []
-        dataset = TabularDataset(rows, columns=cols)
+        return import_jsonl_dataset(path, encoding=encoding)
     elif ext in ('parquet', 'pq'):
-        try:
-            import polars as pl
-            df = pl.read_parquet(path)
-            dataset = PolarsDataset(df)
-        except Exception:
-            import pyarrow.parquet as pq
-            table = pq.read_table(path)
-            dataset = ArrowDataset(table)
+        return import_parquet_dataset(path)
     else:
         actual_delim = '\t' if ext == 'tsv' else delimiter
-        rows = []
-        with open(path, 'r', encoding=encoding) as f:
-            reader = csv.DictReader(f, delimiter=actual_delim)
-            for r in reader:
-                rows.append(dict(r))
-        cols = list(rows[0].keys()) if rows else []
-        dataset = TabularDataset(rows, columns=cols)
-    dataset.metadata.source = path
-    dataset.metadata.encoding = encoding
-    classification = _classify_dataset(dataset.columns(), dataset.to_list()[:10])
-    dataset.metadata.extra['dataset_type'] = classification['type']
-    dataset.metadata.extra['confidence'] = classification['confidence']
-    dataset.metadata.extra['recommendation'] = classification['recommendation']
-    return dataset.with_history('import_dataset', path=path, format=ext)
+        return import_csv_dataset(path, delimiter=actual_delim, encoding=encoding)
 
-def dedup_exact(dataset: Dataset, columns: Optional[List[str]]=None) -> Dataset:
-    """Removes duplicate rows based on exact match across target columns (or all columns if None)."""
+def unicode_normalize(dataset: Dataset, column: str, form: str='NFC') -> Dataset:
+    """Applies Unicode normalization (NFC, NFD, NFKC, NFKD) to values in target column."""
     validate_dataset(dataset)
-    if columns:
-        validate_columns_exist(dataset, columns)
+    validate_column_exists(dataset, column)
+    valid_forms = ('NFC', 'NFD', 'NFKC', 'NFKD')
+    if form not in valid_forms:
+        raise ValueError(f"Invalid Unicode normalization form '{form}'. Must be one of {valid_forms}")
     rows = dataset.to_list()
-    seen = set()
-    deduped = []
+    new_rows = []
     for r in rows:
-        if columns:
-            key = tuple((r.get(c) for c in columns))
-        else:
-            key = tuple(sorted(((k, str(v)) for k, v in r.items())))
-        if key not in seen:
-            seen.add(key)
-            deduped.append(r)
-    res = TabularDataset(deduped, columns=dataset.columns(), metadata=dataset.metadata, history=dataset.history)
-    return res.with_history('dedup_exact', columns=columns)
+        row_copy = dict(r)
+        val = row_copy.get(column)
+        if val is not None:
+            row_copy[column] = unicodedata.normalize(form, str(val))
+        new_rows.append(row_copy)
+    res = TabularDataset(new_rows, columns=dataset.columns(), metadata=dataset.metadata, history=dataset.history)
+    return res.with_history('unicode_normalize', column=column, form=form)
 
-def export_csv(dataset: Dataset, path: str, delimiter: str=',') -> Dataset:
-    """Exports dataset records into a CSV file."""
+def regex_replace(dataset: Dataset, column: str, pattern: str, replacement: str) -> Dataset:
+    """Performs regular expression search-and-replace on target column values."""
+    validate_dataset(dataset)
+    validate_column_exists(dataset, column)
+    compiled_re = re.compile(pattern)
+    rows = dataset.to_list()
+    new_rows = []
+    for r in rows:
+        row_copy = dict(r)
+        val = row_copy.get(column)
+        if val is not None:
+            row_copy[column] = compiled_re.sub(replacement, str(val))
+        new_rows.append(row_copy)
+    res = TabularDataset(new_rows, columns=dataset.columns(), metadata=dataset.metadata, history=dataset.history)
+    return res.with_history('regex_replace', column=column, pattern=pattern, replacement=replacement)
+
+def export_jsonl(dataset: Dataset, path: str) -> Dataset:
+    """Exports dataset records into a JSON Lines (.jsonl) document."""
     validate_dataset(dataset)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     records = dataset.to_list()
-    cols = dataset.columns()
-    with open(path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=cols, delimiter=delimiter)
-        writer.writeheader()
-        if records:
-            writer.writerows(records)
-    return dataset.with_history('export_csv', path=path, delimiter=delimiter)
+    with open(path, 'w', encoding='utf-8') as f:
+        for r in records:
+            f.write(json.dumps(r, ensure_ascii=False) + '\n')
+    return dataset.with_history('export_jsonl', path=path)
 
-def _classify_dataset(cols: List[str], records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Auto-classifies dataset type and returns confidence stats."""
-    cols_set = set((c.lower() for c in cols))
-    if {'instruction', 'output'}.issubset(cols_set) or {'prompt', 'response'}.issubset(cols_set):
-        return {'type': 'Instruction Tuning', 'confidence': 0.98, 'recommendation': 'Unicode Normalize -> Lowercase Instructions -> Filter Empty'}
-    elif 'messages' in cols_set or 'conversations' in cols_set:
-        return {'type': 'Multi-turn Chat', 'confidence': 0.95, 'recommendation': 'Strip HTML -> SimHash Dedup -> Export Parquet'}
-    elif any((c in cols_set for c in ('text', 'content', 'body', 'document', 'story', 'raw_text'))):
-        return {'type': 'Unstructured Text', 'confidence': 0.92, 'recommendation': 'Unicode NFC -> Regex Replace -> Length Filter -> Export JSONL'}
-    else:
-        return {'type': 'Tabular Data', 'confidence': 0.85, 'recommendation': 'Remove Nulls -> Dedup Exact -> Export Parquet'}
+def import_json_dataset(path: str, root_key: str='', encoding: str='utf-8') -> TabularDataset:
+    """Parse a JSON file into a TabularDataset."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Dataset file not found: {path}')
+    with open(path, 'r', encoding=encoding) as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        if root_key and root_key in data and isinstance(data[root_key], list):
+            data = data[root_key]
+        else:
+            for k in ('data', 'items', 'records', 'stories', 'train', 'documents'):
+                if k in data and isinstance(data[k], list):
+                    data = data[k]
+                    break
+    if not isinstance(data, list):
+        data = [data]
+    cols = list(data[0].keys()) if data and isinstance(data[0], dict) else []
+    dataset = TabularDataset(data, columns=cols)
+    dataset.metadata.source = path
+    dataset.metadata.encoding = encoding
+    return dataset.with_history('import_json_dataset', path=path, root_key=root_key)
+
+def import_parquet_dataset(path: str) -> Dataset:
+    """Load a Parquet dataset into a PolarsDataset or ArrowDataset."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Dataset file not found: {path}')
+    try:
+        import polars as pl
+        df = pl.read_parquet(path)
+        dataset = PolarsDataset(df)
+    except Exception:
+        import pyarrow.parquet as pq
+        table = pq.read_table(path)
+        dataset = ArrowDataset(table)
+    dataset.metadata.source = path
+    return dataset.with_history('import_parquet_dataset', path=path)
+
+def import_csv_dataset(path: str, delimiter: str=',', encoding: str='utf-8') -> TabularDataset:
+    """Read a CSV/TSV file into a TabularDataset."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Dataset file not found: {path}')
+    rows = []
+    with open(path, 'r', encoding=encoding) as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        for r in reader:
+            rows.append(dict(r))
+    cols = list(rows[0].keys()) if rows else []
+    dataset = TabularDataset(rows, columns=cols)
+    dataset.metadata.source = path
+    dataset.metadata.encoding = encoding
+    return dataset.with_history('import_csv_dataset', path=path, delimiter=delimiter)
+
+def import_jsonl_dataset(path: str, encoding: str='utf-8') -> TabularDataset:
+    """Parse a JSON Lines file into a TabularDataset."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Dataset file not found: {path}')
+    rows = []
+    with open(path, 'r', encoding=encoding) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    cols = list(rows[0].keys()) if rows else []
+    dataset = TabularDataset(rows, columns=cols)
+    dataset.metadata.source = path
+    dataset.metadata.encoding = encoding
+    return dataset.with_history('import_jsonl_dataset', path=path)
 
 
 # --------------------------------------------------------
@@ -404,9 +385,9 @@ logger = logging.getLogger("flowweaver.pipeline")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="6Na68Unh — FlowWeaver Pipeline")
-    parser.add_argument("--input", default="data/users.csv", help="Input dataset path")
-    parser.add_argument("--output", default="out/results.csv", help="Output file path")
+    parser = argparse.ArgumentParser(description="Yuc6U19C — FlowWeaver Pipeline")
+    parser.add_argument("--input", default="data/TinyStories_all_data", help="Input dataset path")
+    parser.add_argument("--output", default="out/tinystories_prep.jsonl", help="Output file path")
     parser.add_argument("--dry-run", action="store_true", help="Validate pipeline without writing output")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     return parser.parse_args()
@@ -417,26 +398,35 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    logger.info("Starting pipeline: 6na68unh")
+    logger.info("Starting pipeline: yuc6u19c")
     pipeline_start = time.time()
 
     # --------------------------------------------------------
-    # Step 1/3: Import CSV Dataset
+    # Step 1/4: Import Dataset
     # --------------------------------------------------------
-    logger.info("Step 1/3: Import CSV Dataset")
-    raw_dataset = import_dataset(path=args.input, delimiter=',')
+    logger.info("Step 1/4: Import Dataset")
+    raw_dataset = import_dataset(path='/run/media/harsh/STORAGE/Tiny-Stories-Original/TinyStories_all_data')
 
     # --------------------------------------------------------
-    # Step 2/3: Deduplicate Records
+    # Step 2/4: Apply Unicode Normalization
     # --------------------------------------------------------
-    logger.info("Step 2/3: Deduplicate Records")
-    deduplicated_dataset = dedup_exact(raw_dataset)
+    logger.info("Step 2/4: Apply Unicode Normalization")
+    normalized_dataset = unicode_normalize(raw_dataset, column='story', form='NFC')
 
     # --------------------------------------------------------
-    # Step 3/3: Export to CSV
+    # Step 3/4: Apply Regex Text Replacement
     # --------------------------------------------------------
-    logger.info("Step 3/3: Export to CSV")
-    processed_dataset = export_csv(deduplicated_dataset, path=args.output)
+    logger.info("Step 3/4: Apply Regex Text Replacement")
+    cleaned_dataset = regex_replace(normalized_dataset, column='story', pattern='\\s+', replacement=' ')
+
+    # --------------------------------------------------------
+    # Step 4/4: Export to JSON Lines
+    # --------------------------------------------------------
+    logger.info("Step 4/4: Export to JSON Lines")
+    if not args.dry_run:
+        export_jsonl(cleaned_dataset, path=args.output)
+    else:
+        logger.info("[Dry Run] Skipped export: export_jsonl(cleaned_dataset, path=args.output)")
 
     elapsed = time.time() - pipeline_start
     logger.info(f"Pipeline completed in {elapsed:.2f}s")
