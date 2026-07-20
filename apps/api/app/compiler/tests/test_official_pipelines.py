@@ -34,10 +34,10 @@ def test_official_tinystories_pipeline_compilation_and_execution():
         res = PipelineCompiler.compile(pipeline, config)
 
         assert res.success
-        assert "raw_dataset = import_dataset" in res.script
+        assert "raw_dataset = import_json_dataset" in res.script
         assert "normalized_dataset = unicode_normalize(raw_dataset, column='story', form='NFC')" in res.script
         assert "cleaned_dataset = regex_replace(normalized_dataset, column='story', pattern='\\\\s+', replacement=' ')" in res.script
-        assert "processed_dataset = export_jsonl(cleaned_dataset, path=" in res.script
+        assert "export_jsonl(cleaned_dataset, path=" in res.script
 
         # Execute compiled python script
         exec_res = PythonExecutor.execute_script(res.script_path)
@@ -74,7 +74,7 @@ def test_official_alpaca_pipeline_compilation_and_execution():
         res = PipelineCompiler.compile(pipeline, config)
 
         assert res.success
-        assert "raw_dataset = import_dataset" in res.script
+        assert "raw_dataset = import_json_dataset" in res.script
         assert "normalized_dataset = lowercase(raw_dataset, column='instruction')" in res.script
         assert "deduplicated_dataset = dedup_exact(filtered_dataset)" in res.script
 

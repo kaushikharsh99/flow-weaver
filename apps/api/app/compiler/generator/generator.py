@@ -169,11 +169,13 @@ class PythonGenerator:
                 if op.node_type in IMPORT_NODE_TYPES and input_path:
                     call_expr = self._substitute_path_arg(call_expr, input_path, "args.input")
 
-                # For export nodes, use args.output if available
-                if op.node_type in EXPORT_NODE_TYPES and output_path:
-                    call_expr = self._substitute_path_arg(call_expr, output_path, "args.output")
-
-                builder.line(f"{op.target_variable} = {call_expr}")
+                # For export nodes, treat as terminal operation (no variable assignment)
+                if op.node_type in EXPORT_NODE_TYPES:
+                    if output_path:
+                        call_expr = self._substitute_path_arg(call_expr, output_path, "args.output")
+                    builder.line(f"{call_expr}")
+                else:
+                    builder.line(f"{op.target_variable} = {call_expr}")
                 builder.blank()
 
         # Pipeline completion

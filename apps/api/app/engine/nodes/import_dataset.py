@@ -21,7 +21,22 @@ class ImportDatasetNode(Node):
 
     def compile(self, ctx: Any) -> Any:
         path = ctx.current_params.get("path", "data/sample.csv")
-        return ctx.dataset().call("flowweaver.std.io.import_dataset", path=path)
+        fmt = ctx.current_params.get("format", "auto")
+        ext = fmt.lower() if fmt and fmt != "auto" else (path.rsplit(".", 1)[-1].lower() if "." in path else "")
+        delim = ctx.current_params.get("delimiter", ",")
+        root_key = ctx.current_params.get("root_key", "")
+
+        if ext in ("csv", "tsv"):
+            actual_delim = "\t" if ext == "tsv" else delim
+            return ctx.call("flowweaver.std.io.import_csv_dataset", path=path, delimiter=actual_delim)
+        elif ext == "json":
+            return ctx.call("flowweaver.std.io.import_json_dataset", path=path, root_key=root_key)
+        elif ext in ("jsonl", "ndjson"):
+            return ctx.call("flowweaver.std.io.import_jsonl_dataset", path=path)
+        elif ext in ("parquet", "pq"):
+            return ctx.call("flowweaver.std.io.import_parquet_dataset", path=path)
+        else:
+            return ctx.call("flowweaver.std.io.import_dataset", path=path, format=fmt, delimiter=delim, root_key=root_key)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
         path = ctx.parameters.get("path", "data/sample.csv")

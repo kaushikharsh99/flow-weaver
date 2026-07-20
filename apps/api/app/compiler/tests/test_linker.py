@@ -97,3 +97,62 @@ def test_standalone_executable_script_size_reduction():
         lines = res.script.splitlines()
         assert len(lines) < 450, f"Generated script size too large: {len(lines)} lines"
         assert "class StreamingDataset" not in res.script
+
+
+def test_terminal_export_and_format_specific_loader():
+    pipeline = {
+        "id": "json_pipeline",
+        "nodes": [
+            {
+                "id": "n1",
+                "type": "pipelineNode",
+                "data": {
+                    "typeId": "import_dataset",
+                    "title": "Import JSON",
+                    "params": {"path": "data.json"}
+                }
+            },
+            {
+                "id": "n2",
+                "type": "pipelineNode",
+                "data": {
+                    "typeId": "dedup_exact",
+                    "title": "Exact Dedup",
+                    "params": {}
+                }
+            },
+            {
+                "id": "n3",
+                "type": "pipelineNode",
+                "data": {
+                    "typeId": "write_jsonl",
+                    "title": "Export JSONL",
+                    "params": {"path": "out.jsonl"}
+                }
+            }
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+            {"id": "e2", "source": "n2", "target": "n3"}
+        ]
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = CompilerConfig(output_dir=tmpdir, script_name="json_pipe.py")
+        res = PipelineCompiler.compile(pipeline, config)
+
+        assert res.success
+        code = res.script
+
+        # 1. Format specific loader emitted
+        assert "def import_json_dataset" in code
+        assert "raw_dataset = import_json_dataset" in code
+
+        # 2. Terminal export node has no variable assignment
+        assert "export_jsonl(deduplicated_dataset, path=" in code
+        assert "processed_dataset = export_jsonl" not in code
+
+        # 3. Unused dataset classes excluded
+        assert "class PolarsDataset" not in code
+        assert "class ArrowDataset" not in code
+        assert "class StreamingDataset" not in code

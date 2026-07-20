@@ -106,7 +106,7 @@ def test_llm_finetuning_pipeline_snapshot():
 
         assert res.success
         assert "def main():" in res.script
-        assert "def import_dataset" in res.script
+        assert "def import_csv_dataset" in res.script
         assert "def lowercase" in res.script
 
         # Verify M2: argparse, logging, progress
@@ -124,7 +124,7 @@ def test_llm_finetuning_pipeline_snapshot():
         assert "# " + "-" * 56 in res.script
 
         # Verify semantic variable names
-        assert "raw_dataset = import_dataset" in res.script
+        assert "raw_dataset = import_csv_dataset" in res.script
         assert "normalized_dataset = lowercase" in res.script
 
         # Verify argparse path substitution

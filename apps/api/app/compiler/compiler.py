@@ -14,10 +14,10 @@ from app.engine.registry import registry
 NODE_MODULE_MAP = {
     "import_dataset": ("flowweaver.std.io", "import_dataset"),
     "load_file": ("flowweaver.std.io", "import_dataset"),
-    "load_csv": ("flowweaver.std.io", "import_dataset"),
-    "load_json": ("flowweaver.std.io", "import_dataset"),
-    "load_jsonl": ("flowweaver.std.io", "import_dataset"),
-    "load_parquet": ("flowweaver.std.io", "import_dataset"),
+    "load_csv": ("flowweaver.std.io", "import_csv_dataset"),
+    "load_json": ("flowweaver.std.io", "import_json_dataset"),
+    "load_jsonl": ("flowweaver.std.io", "import_jsonl_dataset"),
+    "load_parquet": ("flowweaver.std.io", "import_parquet_dataset"),
 
     "unicode_normalize": ("flowweaver.std.text", "unicode_normalize"),
     "lowercase": ("flowweaver.std.text", "lowercase"),
