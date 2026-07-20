@@ -1,25 +1,43 @@
 import os
 import ast
-from typing import Dict, Set, List, Tuple
+import sys
+from typing import Dict, Set, List, Tuple, Optional
+
+# Standard library module list (fallback for Python < 3.10)
+STDLIB_MODULES = getattr(sys, 'stdlib_module_names', {
+    "abc", "argparse", "ast", "asyncio", "base64", "collections", "copy", "csv",
+    "dataclasses", "datetime", "enum", "functools", "hashlib", "importlib",
+    "inspect", "io", "json", "logging", "math", "os", "pathlib", "random", "re",
+    "shutil", "sys", "time", "typing", "unicodedata", "urllib", "warnings"
+})
+
+CORE_KEEP_METHODS = {
+    "__init__", "__repr__", "__iter__", "__len__", "__getitem__", "__enter__", "__exit__",
+    "metadata", "schema", "history", "columns", "row_count", "to_list", "with_history", "iter_chunks"
+}
 
 
-class DependencyVisitor(ast.NodeVisitor):
-    """AST visitor that collects all referenced names matching standard library definitions."""
-    def __init__(self, name_to_file: Dict[str, str]):
-        self.dependencies = set()
-        self.name_to_file = name_to_file
+class SymbolReferenceVisitor(ast.NodeVisitor):
+    """Collects all identifier names and attribute names referenced in an AST."""
+    def __init__(self):
+        self.referenced_names: Set[str] = set()
+        self.referenced_attrs: Set[str] = set()
 
     def visit_Name(self, node: ast.Name):
-        if node.id in self.name_to_file:
-            self.dependencies.add(node.id)
+        self.referenced_names.add(node.id)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        self.referenced_attrs.add(node.attr)
         self.generic_visit(node)
 
 
 class PipelineLinker:
-    """FlowWeaver Linker & Dependency Analyzer.
+    """FlowWeaver Linker & Dependency Analyzer with Tree-Shaking.
     
-    Parses flowweaver.std source code using AST, traces required functions,
-    constants, and classes, and bundles them into a standalone, zero-dependency block.
+    Parses flowweaver.std source code using AST, traces reachable functions,
+    constants, and classes, prunes unreferenced methods & dead code, deduplicates
+    and groups imports, and bundles a minimal, zero-dependency standalone script block.
     """
 
     CLASS_ORDER = [
@@ -43,133 +61,227 @@ class PipelineLinker:
     ]
 
     def __init__(self):
-        # Resolve the flowweaver_sdk/flowweaver/std directory relative to this file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.abspath(os.path.join(current_dir, "..", "..", "..", ".."))
-        self.std_dir = os.path.join(repo_root, "packages", "flowweaver_sdk", "flowweaver", "std")
+        d = current_dir
+        self.std_dir = ""
+        while d and d != os.path.dirname(d):
+            candidate = os.path.join(d, "packages", "flowweaver_sdk", "flowweaver", "std")
+            if os.path.exists(candidate):
+                self.std_dir = candidate
+                break
+            d = os.path.dirname(d)
         
-        # Maps name -> relative filepath in flowweaver/std/
-        self.name_to_file = self._build_std_name_map()
+        self.definitions: Dict[str, Tuple[str, str, ast.AST, List[ast.AST]]] = {}
+        self.name_to_file: Dict[str, str] = {}
+        self._build_std_name_map()
 
-    def _build_std_name_map(self) -> Dict[str, str]:
-        """Scans all standard library source files dynamically and maps definitions to files."""
-        name_to_file = {}
+    def _build_std_name_map(self):
+        """Scans standard library source files and maps top-level symbols to definitions and imports."""
         if not os.path.exists(self.std_dir):
-            return name_to_file
+            return
 
         for root, _, files in os.walk(self.std_dir):
             for file in files:
                 if file.endswith(".py") and not file.startswith("__"):
-                    rel_path = os.path.relpath(os.path.join(root, file), self.std_dir)
                     filepath = os.path.join(root, file)
+                    rel_path = os.path.relpath(filepath, self.std_dir)
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
                             tree = ast.parse(f.read(), filename=filepath)
+                        
+                        file_imports = [
+                            n for n in tree.body
+                            if isinstance(n, (ast.Import, ast.ImportFrom))
+                        ]
+
                         for node in tree.body:
-                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                                name_to_file[node.name] = rel_path
-                            elif isinstance(node, ast.ClassDef):
-                                name_to_file[node.name] = rel_path
+                            names_in_node = []
+                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                                names_in_node.append(node.name)
                             elif isinstance(node, ast.Assign):
                                 for target in node.targets:
                                     if isinstance(target, ast.Name):
-                                        name_to_file[target.id] = rel_path
+                                        names_in_node.append(target.id)
+
+                            for name in names_in_node:
+                                self.definitions[name] = (rel_path, filepath, node, file_imports)
+                                self.name_to_file[name] = rel_path
                     except Exception:
                         pass
-        return name_to_file
 
     def link(self, required_operations: List[str]) -> Tuple[str, List[str]]:
-        """Link and bundle only the required operations, helpers, and classes.
+        """Link and bundle only reachable operations, helpers, and classes.
         
-        Returns a tuple of:
-          - inlined_code: Standalone Python source code string.
-          - requirements: List of third-party package dependencies detected during linking.
+        Returns:
+            inlined_code: Standalone Python source code string.
+            requirements: List of third-party package dependencies detected during linking.
         """
         resolved_nodes: List[Tuple[str, ast.AST]] = []
         resolved_names: Set[str] = set()
-        simple_imports: Set[str] = set()
-        from_imports: Dict[str, Set[str]] = {}
-        detected_packages: Set[str] = set()
+        file_imports_collected: List[ast.AST] = []
 
-        # Build initial queue from entrypoint operations
         queue = list(required_operations)
 
-        # Tracing dependencies using BFS
+        # Step 1: Reachability analysis using BFS
         while queue:
             name = queue.pop(0)
-            if name in resolved_names:
-                continue
-
-            rel_path = self.name_to_file.get(name)
-            if not rel_path:
+            if name in resolved_names or name not in self.definitions:
                 continue
 
             resolved_names.add(name)
-            filepath = os.path.join(self.std_dir, rel_path)
-            
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    file_content = f.read()
-                tree = ast.parse(file_content, filename=filepath)
+            rel_path, filepath, target_node, file_imports = self.definitions[name]
+            resolved_nodes.append((name, target_node))
+            file_imports_collected.extend(file_imports)
 
-                # Step 1: Scan top-level imports in this file
-                for node in tree.body:
-                    if isinstance(node, ast.Import):
-                        for name_node in node.names:
-                            if not name_node.name.startswith("flowweaver"):
-                                simple_imports.add(name_node.name)
-                                # Track package name for requirements.txt
-                                pkg_base = name_node.name.split(".")[0]
-                                if pkg_base not in ("os", "sys", "json", "csv", "re", "math", "time", "hashlib", "unicodedata", "abc", "typing", "dataclasses", "inspect"):
-                                    detected_packages.add(pkg_base)
-                    elif isinstance(node, ast.ImportFrom):
-                        if node.module and not node.module.startswith("flowweaver"):
-                            names_set = from_imports.setdefault(node.module, set())
-                            for alias in node.names:
-                                names_set.add(alias.name)
-                            # Track package name for requirements.txt
-                            pkg_base = node.module.split(".")[0]
-                            if pkg_base not in ("os", "sys", "json", "csv", "re", "math", "time", "hashlib", "unicodedata", "abc", "typing", "dataclasses", "inspect"):
-                                    detected_packages.add(pkg_base)
+            # Trace references inside target_node
+            visitor = SymbolReferenceVisitor()
+            visitor.visit(target_node)
 
-                # Step 2: Locate and extract definition node
-                target_node = None
-                for node in tree.body:
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-                        target_node = node
-                        break
-                    elif isinstance(node, ast.ClassDef) and node.name == name:
-                        target_node = node
-                        break
-                    elif isinstance(node, ast.Assign):
-                        for target in node.targets:
-                            if isinstance(target, ast.Name) and target.id == name:
-                                target_node = node
-                                break
-                        if target_node:
-                            break
+            for dep in visitor.referenced_names:
+                if dep in self.definitions and dep not in resolved_names:
+                    queue.append(dep)
 
-                if target_node:
-                    resolved_nodes.append((name, target_node))
-                    # Trace names referenced in this definition
-                    visitor = DependencyVisitor(self.name_to_file)
-                    visitor.visit(target_node)
-                    for dep in visitor.dependencies:
-                        if dep not in resolved_names:
-                            queue.append(dep)
+            # Trace base classes if target_node is a ClassDef
+            if isinstance(target_node, ast.ClassDef):
+                for base in target_node.bases:
+                    if isinstance(base, ast.Name) and base.id in self.definitions and base.id not in resolved_names:
+                        queue.append(base.id)
 
-            except Exception:
-                pass
+        # Step 2: Collect all referenced attributes & names across all resolved nodes
+        global_visitor = SymbolReferenceVisitor()
+        for _, node in resolved_nodes:
+            global_visitor.visit(node)
 
-        # Organize inlined blocks logically to ensure proper declaration order
+        referenced_attrs = global_visitor.referenced_attrs
+
+        # Step 3: Class Method Pruning (Dead code elimination inside classes)
+        pruned_resolved_nodes: List[Tuple[str, ast.AST]] = []
+        for name, node in resolved_nodes:
+            if isinstance(node, ast.ClassDef):
+                new_body = []
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        m_name = item.name
+                        if (
+                            m_name in CORE_KEEP_METHODS
+                            or m_name.startswith("__")
+                            or m_name in referenced_attrs
+                            or any(isinstance(dec, ast.Name) and dec.id in ("classmethod", "staticmethod") for dec in item.decorator_list)
+                        ):
+                            new_body.append(item)
+                    else:
+                        new_body.append(item)
+                
+                cloned_class = ast.ClassDef(
+                    name=node.name,
+                    bases=node.bases,
+                    keywords=node.keywords,
+                    body=new_body,
+                    decorator_list=node.decorator_list
+                )
+                pruned_resolved_nodes.append((name, cloned_class))
+            else:
+                pruned_resolved_nodes.append((name, node))
+
+        # Re-scan referenced names after method pruning
+        final_visitor = SymbolReferenceVisitor()
+        for _, node in pruned_resolved_nodes:
+            final_visitor.visit(node)
+        final_names = final_visitor.referenced_names
+
+        # Step 4: Import Optimization & Deduplication
+        simple_imports: Set[Tuple[str, Optional[str]]] = set()
+        from_imports: Dict[str, Set[Tuple[str, Optional[str]]]] = {}
+        third_party_packages: Set[str] = set()
+
+        for imp in file_imports_collected:
+            if isinstance(imp, ast.Import):
+                for alias in imp.names:
+                    mod_name = alias.name
+                    if mod_name.startswith("flowweaver"):
+                        continue
+                    as_name = alias.asname
+                    check_symbol = as_name or mod_name.split(".")[0]
+                    if check_symbol in final_names or mod_name.split(".")[0] in final_names:
+                        simple_imports.add((mod_name, as_name))
+                        top_pkg = mod_name.split(".")[0]
+                        if top_pkg not in STDLIB_MODULES:
+                            third_party_packages.add(top_pkg)
+
+            elif isinstance(imp, ast.ImportFrom):
+                mod_name = imp.module or ""
+                if mod_name.startswith("flowweaver") or not mod_name:
+                    continue
+                top_pkg = mod_name.split(".")[0]
+
+                for alias in imp.names:
+                    sym_name = alias.name
+                    as_name = alias.asname
+                    check_symbol = as_name or sym_name
+                    if check_symbol in final_names or check_symbol == "*":
+                        names_set = from_imports.setdefault(mod_name, set())
+                        names_set.add((sym_name, as_name))
+                        if top_pkg not in STDLIB_MODULES:
+                            third_party_packages.add(top_pkg)
+
+        # Format import lines (PEP 8 grouped)
+        stdlib_simple = []
+        stdlib_from = {}
+        third_simple = []
+        third_from = {}
+
+        for mod, asname in simple_imports:
+            top_pkg = mod.split(".")[0]
+            if top_pkg in STDLIB_MODULES:
+                stdlib_simple.append((mod, asname))
+            else:
+                third_simple.append((mod, asname))
+
+        for mod, pairs in from_imports.items():
+            top_pkg = mod.split(".")[0]
+            if top_pkg in STDLIB_MODULES:
+                stdlib_from[mod] = pairs
+            else:
+                third_from[mod] = pairs
+
+        import_blocks = []
+
+        # Stdlib imports
+        stdlib_lines = []
+        for mod, asname in sorted(stdlib_simple):
+            line = f"import {mod} as {asname}" if asname else f"import {mod}"
+            stdlib_lines.append(line)
+        for mod in sorted(stdlib_from.keys()):
+            items = []
+            for name, asname in sorted(list(stdlib_from[mod])):
+                items.append(f"{name} as {asname}" if asname else name)
+            stdlib_lines.append(f"from {mod} import {', '.join(items)}")
+
+        if stdlib_lines:
+            import_blocks.append("\n".join(stdlib_lines))
+
+        # Third-party imports
+        third_lines = []
+        for mod, asname in sorted(third_simple):
+            line = f"import {mod} as {asname}" if asname else f"import {mod}"
+            third_lines.append(line)
+        for mod in sorted(third_from.keys()):
+            items = []
+            for name, asname in sorted(list(third_from[mod])):
+                items.append(f"{name} as {asname}" if asname else name)
+            third_lines.append(f"from {mod} import {', '.join(items)}")
+
+        if third_lines:
+            import_blocks.append("\n".join(third_lines))
+
+        # Step 5: Organize inlined code blocks logically
         constants_blocks: List[str] = []
         classes_blocks: List[Tuple[str, str]] = []
         utils_blocks: List[Tuple[str, str]] = []
         ops_blocks: List[str] = []
 
-        for name, node in resolved_nodes:
+        for name, node in pruned_resolved_nodes:
             code_str = ast.unparse(node)
-            
             if isinstance(node, ast.Assign):
                 constants_blocks.append(code_str)
             elif isinstance(node, ast.ClassDef):
@@ -179,7 +291,6 @@ class PipelineLinker:
             else:
                 ops_blocks.append(code_str)
 
-        # Sort classes based on class dependency order
         def get_class_index(item: Tuple[str, str]) -> int:
             try:
                 return self.CLASS_ORDER.index(item[0])
@@ -187,7 +298,6 @@ class PipelineLinker:
                 return len(self.CLASS_ORDER)
         classes_blocks.sort(key=get_class_index)
 
-        # Sort utility functions
         def get_util_index(item: Tuple[str, str]) -> int:
             try:
                 return self.UTIL_ORDER.index(item[0])
@@ -195,21 +305,11 @@ class PipelineLinker:
                 return len(self.UTIL_ORDER)
         utils_blocks.sort(key=get_util_index)
 
-        # Assemble the inlined code sections
         inlined_parts = []
-        
-        # Imports collected from standard library
-        import_lines = []
-        for imp in sorted(list(simple_imports)):
-            import_lines.append(f"import {imp}")
-        for mod in sorted(from_imports.keys()):
-            names = sorted(list(from_imports[mod]))
-            import_lines.append(f"from {mod} import {', '.join(names)}")
-        if import_lines:
-            inlined_parts.append("\n".join(import_lines))
+        if import_blocks:
+            inlined_parts.append("\n\n".join(import_blocks))
             inlined_parts.append("")
 
-        # Constants
         if constants_blocks:
             inlined_parts.append("# " + "=" * 54)
             inlined_parts.append("# Global Constants")
@@ -217,7 +317,6 @@ class PipelineLinker:
             inlined_parts.append("\n\n".join(constants_blocks))
             inlined_parts.append("")
 
-        # Base Classes & Datasets
         if classes_blocks:
             inlined_parts.append("# " + "=" * 54)
             inlined_parts.append("# Core Dataset Engineering Classes")
@@ -226,7 +325,6 @@ class PipelineLinker:
             inlined_parts.append(class_code)
             inlined_parts.append("")
 
-        # Utilities
         if utils_blocks:
             inlined_parts.append("# " + "=" * 54)
             inlined_parts.append("# Helper Validation & Instrumentation Utilities")
@@ -235,7 +333,6 @@ class PipelineLinker:
             inlined_parts.append(util_code)
             inlined_parts.append("")
 
-        # Operations
         if ops_blocks:
             inlined_parts.append("# " + "=" * 54)
             inlined_parts.append("# Pipeline Standard Operations")
@@ -243,4 +340,4 @@ class PipelineLinker:
             inlined_parts.append("\n\n".join(ops_blocks))
             inlined_parts.append("")
 
-        return "\n".join(inlined_parts), sorted(list(detected_packages))
+        return "\n".join(inlined_parts), sorted(list(third_party_packages))
