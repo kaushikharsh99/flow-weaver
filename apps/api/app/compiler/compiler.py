@@ -9,6 +9,32 @@ from app.compiler.generator import PythonGenerator
 from app.engine.registry import registry
 
 
+CORE_LOGIC_MODULE = "app.engine.nodes.core_logic"
+
+NODE_MODULE_MAP = {
+    "import_dataset": (CORE_LOGIC_MODULE, "import_dataset"),
+    "load_file": (CORE_LOGIC_MODULE, "import_dataset"),
+    "load_csv": (CORE_LOGIC_MODULE, "import_dataset"),
+    "load_json": (CORE_LOGIC_MODULE, "import_dataset"),
+    "load_jsonl": (CORE_LOGIC_MODULE, "import_dataset"),
+    "load_parquet": (CORE_LOGIC_MODULE, "import_dataset"),
+    "unicode_normalize": (CORE_LOGIC_MODULE, "unicode_normalize"),
+    "lowercase": (CORE_LOGIC_MODULE, "lowercase"),
+    "strip_html": (CORE_LOGIC_MODULE, "strip_html"),
+    "regex_replace": (CORE_LOGIC_MODULE, "regex_replace"),
+    "chunk_text": (CORE_LOGIC_MODULE, "chunk_text"),
+    "remove_empty": (CORE_LOGIC_MODULE, "remove_empty"),
+    "filter_rows": (CORE_LOGIC_MODULE, "filter_rows"),
+    "length_filter": (CORE_LOGIC_MODULE, "length_filter"),
+    "language_filter": (CORE_LOGIC_MODULE, "language_filter"),
+    "dedup_exact": (CORE_LOGIC_MODULE, "dedup_exact"),
+    "write_csv": (CORE_LOGIC_MODULE, "write_csv"),
+    "write_jsonl": (CORE_LOGIC_MODULE, "write_jsonl"),
+    "write_parquet": (CORE_LOGIC_MODULE, "write_parquet"),
+}
+
+
+
 class PipelineCompiler:
     """FlowWeaver Visual Pipeline Compiler.
     
@@ -105,10 +131,14 @@ class PipelineCompiler:
                     continue
 
             # Default Operation IR Construction
-            module_name = f"flowweaver.{type_id.split('_')[0]}"
-            func_name = type_id
+            if type_id in NODE_MODULE_MAP:
+                module_name, func_name = NODE_MODULE_MAP[type_id]
+            else:
+                module_name = f"flowweaver.{type_id.split('_')[0]}"
+                func_name = type_id
 
             ctx.require_import(module_name, name=func_name)
+
 
             call_args = []
             if input_var:

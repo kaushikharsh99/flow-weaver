@@ -2,7 +2,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routes import projects, pipelines, nodes, executions, templates
+from app.routes import projects, pipelines, nodes, executions, templates, compiler
+
 from app.db import engine, Base
 
 # Create database tables (SQLite in dev)
@@ -44,6 +45,8 @@ app.include_router(pipelines.router, prefix="/api", tags=["Pipelines"])
 app.include_router(nodes.router, prefix="/api", tags=["Nodes"])
 app.include_router(executions.router, prefix="/api", tags=["Executions"])
 app.include_router(templates.router, prefix="/api", tags=["Templates"])
+app.include_router(compiler.router, tags=["Compiler"])
+
 
 @app.get("/api/health")
 def health_check():
