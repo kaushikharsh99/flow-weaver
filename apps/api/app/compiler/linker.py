@@ -109,7 +109,7 @@ class PipelineLinker:
                     except Exception:
                         pass
 
-    def link(self, required_operations: List[str]) -> Tuple[str, List[str]]:
+    def link(self, required_operations: List[str], extra_imports: Optional[List[str]] = None) -> Tuple[str, List[str]]:
         """Link and bundle only reachable operations, helpers, and classes.
         
         Returns:
@@ -193,6 +193,10 @@ class PipelineLinker:
         simple_imports: Set[Tuple[str, Optional[str]]] = set()
         from_imports: Dict[str, Set[Tuple[str, Optional[str]]]] = {}
         third_party_packages: Set[str] = set()
+
+        if extra_imports:
+            for extra_imp in extra_imports:
+                simple_imports.add((extra_imp, None))
 
         for imp in file_imports_collected:
             if isinstance(imp, ast.Import):

@@ -146,13 +146,18 @@ def test_terminal_export_and_format_specific_loader():
 
         # 1. Format specific loader emitted
         assert "def import_json_dataset" in code
-        assert "raw_dataset = import_json_dataset" in code
+        assert "raw_dataset = import_json_dataset(path=args.input)" in code
 
-        # 2. Terminal export node has no variable assignment
-        assert "export_jsonl(deduplicated_dataset, path=" in code
+        # 2. Terminal export node has no variable assignment & supports dry-run
+        assert "if not args.dry_run:" in code
+        assert "export_jsonl(deduplicated_dataset, path=args.output)" in code
         assert "processed_dataset = export_jsonl" not in code
 
-        # 3. Unused dataset classes excluded
+        # 3. Unused dataset classes and runtime classification excluded
         assert "class PolarsDataset" not in code
         assert "class ArrowDataset" not in code
         assert "class StreamingDataset" not in code
+        assert "_classify_dataset" not in code
+
+        # 4. Duplicate imports eliminated
+        assert code.count("import time") == 1, "import time should appear exactly once"

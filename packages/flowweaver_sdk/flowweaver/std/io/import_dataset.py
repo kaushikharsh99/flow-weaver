@@ -116,17 +116,11 @@ def import_dataset(
     ext = format.lower() if format else os.path.splitext(path)[1].lstrip(".").lower()
 
     if ext == "json":
-        dataset = import_json_dataset(path, root_key=root_key, encoding=encoding)
+        return import_json_dataset(path, root_key=root_key, encoding=encoding)
     elif ext in ("jsonl", "ndjson"):
-        dataset = import_jsonl_dataset(path, encoding=encoding)
+        return import_jsonl_dataset(path, encoding=encoding)
     elif ext in ("parquet", "pq"):
-        dataset = import_parquet_dataset(path)
+        return import_parquet_dataset(path)
     else:
         actual_delim = "\t" if ext == "tsv" else delimiter
-        dataset = import_csv_dataset(path, delimiter=actual_delim, encoding=encoding)
-
-    classification = _classify_dataset(dataset.columns(), dataset.to_list()[:10])
-    dataset.metadata.extra["dataset_type"] = classification["type"]
-    dataset.metadata.extra["confidence"] = classification["confidence"]
-    dataset.metadata.extra["recommendation"] = classification["recommendation"]
-    return dataset
+        return import_csv_dataset(path, delimiter=actual_delim, encoding=encoding)

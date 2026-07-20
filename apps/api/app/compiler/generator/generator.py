@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from app.compiler.ir import PipelineIR, IROperation, IRCall, IRConstant, IRVariable
 
@@ -79,13 +80,7 @@ class PythonGenerator:
         builder.line(get_header(ir.name))
         builder.blank()
 
-        # 2. Standard library base imports
-        builder.line("import argparse")
-        builder.line("import logging")
-        builder.line("import time")
-        builder.blank()
-
-        # 3. Resolve and Inline Operations using PipelineLinker
+        # 2. Resolve and Inline Operations using PipelineLinker
         from app.compiler.linker import PipelineLinker
         linker = PipelineLinker()
         
@@ -96,14 +91,14 @@ class PythonGenerator:
                 if func_name in linker.name_to_file:
                     required_ops.append(func_name)
 
-        inlined_code, requirements = linker.link(required_ops)
+        inlined_code, requirements = linker.link(required_ops, extra_imports=["argparse", "logging", "time"])
         ir.metadata["requirements"] = requirements
         
         if inlined_code:
             builder.line(inlined_code)
             builder.blank()
 
-        # 4. Logging setup
+        # 3. Logging setup
         builder.line(SECTION_SEPARATOR)
         builder.line("# Logging Configuration")
         builder.line(SECTION_SEPARATOR)
@@ -116,7 +111,7 @@ class PythonGenerator:
         builder.blank()
         builder.blank()
 
-        # 5. Parse args function
+        # 4. Parse args function
         builder.line("def parse_args():")
         builder.indent()
         safe_name = ir.name.replace("_", " ").title()
@@ -132,7 +127,7 @@ class PythonGenerator:
         builder.blank()
         builder.blank()
 
-        # 6. Main function definition
+        # 5. Main function definition
         builder.line("def main():")
         builder.indent()
 
@@ -169,11 +164,18 @@ class PythonGenerator:
                 if op.node_type in IMPORT_NODE_TYPES and input_path:
                     call_expr = self._substitute_path_arg(call_expr, input_path, "args.input")
 
-                # For export nodes, treat as terminal operation (no variable assignment)
+                # For export nodes, handle dry-run execution
                 if op.node_type in EXPORT_NODE_TYPES:
                     if output_path:
                         call_expr = self._substitute_path_arg(call_expr, output_path, "args.output")
+                    builder.line("if not args.dry_run:")
+                    builder.indent()
                     builder.line(f"{call_expr}")
+                    builder.dedent()
+                    builder.line("else:")
+                    builder.indent()
+                    builder.line(f'logger.info("[Dry Run] Skipped export: {call_expr}")')
+                    builder.dedent()
                 else:
                     builder.line(f"{op.target_variable} = {call_expr}")
                 builder.blank()
@@ -186,11 +188,22 @@ class PythonGenerator:
         builder.blank()
         builder.blank()
 
-        # 7. Footer script entrypoint
+        # 6. Footer script entrypoint
         builder.line(get_footer())
 
         raw_code = builder.to_code()
         return Formatter.format_code(raw_code)
+
+    def _sanitize_path(self, path_str: str, default: str) -> str:
+        if not path_str:
+            return default
+        if path_str.startswith("/tmp") or path_str.startswith("/var/tmp"):
+            return path_str
+        if path_str.startswith("/run/") or (path_str.startswith("/home/") and not path_str.startswith("/home/runner")):
+            filename = os.path.basename(path_str)
+            sub_dir = "out" if default.startswith("out") else "data"
+            return f"{sub_dir}/{filename}"
+        return path_str
 
     def _detect_io_paths(self, ir: PipelineIR) -> Tuple[Optional[str], Optional[str]]:
         """Extract the first input path and last output path from pipeline operations."""
@@ -203,9 +216,9 @@ class PythonGenerator:
                 if path_val is not None:
                     path_str = path_val.value if isinstance(path_val, IRConstant) else str(path_val)
                     if op.node_type in IMPORT_NODE_TYPES and input_path is None:
-                        input_path = path_str
+                        input_path = self._sanitize_path(path_str, default="data/input.json")
                     elif op.node_type in EXPORT_NODE_TYPES:
-                        output_path = path_str
+                        output_path = self._sanitize_path(path_str, default="out/output.jsonl")
 
         return input_path, output_path
 
@@ -221,9 +234,18 @@ class PythonGenerator:
             for arg in expr.args:
                 args_list.append(self._format_value(arg))
 
-            # Kwargs
+            # Kwargs (filtering out default values)
+            default_kwargs = {
+                "format": "auto",
+                "root_key": "",
+                "encoding": "utf-8",
+                "delimiter": ",",
+            }
             for k, v in expr.kwargs.items():
-                args_list.append(f"{k}={self._format_value(v)}")
+                v_str = self._format_value(v)
+                if k in default_kwargs and (v_str == repr(default_kwargs[k]) or v_str == default_kwargs[k]):
+                    continue
+                args_list.append(f"{k}={v_str}")
 
             joined_args = ", ".join(args_list)
             return f"{expr.function}({joined_args})"
