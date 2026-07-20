@@ -1,6 +1,7 @@
+import os
+import sys
 from typing import Optional
 
-import sys
 import argparse
 import json
 import tarfile
@@ -759,7 +760,7 @@ def package_plugin(path: str):
     print(f"Output path: {os.path.abspath(tar_filename)}")
 
 
-def compile_pipeline(pipeline_path: str, output_path: Optional[str] = None):
+def compile_pipeline(pipeline_path: str, output_path: Optional[str] = None, debug: bool = False):
     """Compiles a visual pipeline.json file into a standalone, production-ready pipeline.py script."""
     if not os.path.exists(pipeline_path):
         print(f"Error: Pipeline file '{pipeline_path}' not found.")
@@ -784,6 +785,25 @@ def compile_pipeline(pipeline_path: str, output_path: Optional[str] = None):
     config = CompilerConfig(output_dir=out_dir, script_name=out_name)
     res = PipelineCompiler.compile(pipeline_data, config)
 
+    if debug:
+        print("\n==================================================")
+        print("         FlowWeaver Compiler Inspector Diagnostics")
+        print("==================================================")
+        print(f"⏱  Compile Time:       {res.execution_time_ms:.2f} ms")
+        print(f"📜 Generated LOC:      {len(res.script.splitlines())} lines")
+        print(f"📦 Operations Count:   {res.statistics.get('operations_count', 0)}")
+        print(f"📥 Imports Count:      {res.statistics.get('imports_count', 0)}")
+        print(f"🏷  Variables Count:    {res.statistics.get('variables_count', 0)}")
+        if res.warnings:
+            print("\n⚠️ Compiler Warnings:")
+            for w in res.warnings:
+                print(f"   - {w}")
+        print("\n==================================================")
+        print("Generated Python Output Preview:")
+        print("==================================================")
+        print(res.script)
+        print("==================================================\n")
+
     if res.success:
         print(f"✔ Pipeline successfully compiled to: {res.script_path}")
     else:
@@ -800,6 +820,8 @@ def main():
     compile_parser = subparsers.add_parser("compile", help="Compiles a visual pipeline JSON into a runnable Python script.")
     compile_parser.add_argument("pipeline", type=str, help="Path to input pipeline.json file.")
     compile_parser.add_argument("--output", "-o", type=str, default=None, help="Output path for compiled pipeline.py script.")
+    compile_parser.add_argument("--debug", "-d", action="store_true", help="Print detailed IR, imports, timing, and generated script preview.")
+
 
     create_plugin_parser = subparsers.add_parser("create-plugin", help="Scaffold a new custom plugin template.")
     create_plugin_parser.add_argument("name", type=str, help="Name of the plugin directory to create.")
@@ -823,7 +845,8 @@ def main():
     args = parser.parse_args()
     
     if args.command == "compile":
-        compile_pipeline(args.pipeline, args.output)
+        compile_pipeline(args.pipeline, args.output, args.debug)
+
     elif args.command == "create-plugin":
         create_plugin(args.name)
     elif args.command == "create-node":
