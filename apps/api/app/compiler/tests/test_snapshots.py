@@ -106,8 +106,8 @@ def test_llm_finetuning_pipeline_snapshot():
 
         assert res.success
         assert "def main():" in res.script
-        assert "from flowweaver.std.io import import_dataset" in res.script
-        assert "from flowweaver.std.text import lowercase" in res.script
+        assert "def import_dataset" in res.script
+        assert "def lowercase" in res.script
 
         # Verify M2: argparse, logging, progress
         assert "import argparse" in res.script

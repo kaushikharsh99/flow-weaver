@@ -193,6 +193,46 @@ class PipelineCompiler:
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_code)
 
+        # Create sample directories
+        os.makedirs(os.path.join(config.output_dir, "sample_input"), exist_ok=True)
+        os.makedirs(os.path.join(config.output_dir, "sample_output"), exist_ok=True)
+
+        # Write config.yaml
+        input_path, output_path = generator._detect_io_paths(ir)
+        config_yaml_content = f"""# FlowWeaver Pipeline Configuration
+pipeline_name: "{pipeline_name}"
+input_path: "{input_path or ''}"
+output_path: "{output_path or ''}"
+"""
+        with open(os.path.join(config.output_dir, "config.yaml"), "w", encoding="utf-8") as f:
+            f.write(config_yaml_content)
+
+        # Write LICENSE
+        license_content = """MIT License
+
+Copyright (c) 2026 FlowWeaver
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+        with open(os.path.join(config.output_dir, "LICENSE"), "w", encoding="utf-8") as f:
+            f.write(license_content)
+
         # Step 6: Build Complete Pipeline Artifact Package
         duration_ms = (time.time() - start_time) * 1000.0
 
@@ -200,19 +240,38 @@ class PipelineCompiler:
         with open(os.path.join(config.output_dir, "pipeline.json"), "w", encoding="utf-8") as f:
             json.dump(pipeline_dict, f, indent=2)
 
-        # 6b. Write pipeline.lock (Dependency Lock)
+        # 6b. Write pipeline.lock (Dependency Lock) and requirements.txt
+        detected_packages = ir.metadata.get("requirements", [])
+        package_version_map = {
+            "polars": "polars>=0.20.0",
+            "pyarrow": "pyarrow>=14.0.0",
+            "xxhash": "xxhash>=3.0.0",
+        }
+        
+        lock_deps = {}
+        requirements_lines = []
+        for pkg in detected_packages:
+            mapped_ver = package_version_map.get(pkg, pkg)
+            lock_deps[pkg] = mapped_ver.split(">=")[-1] if ">=" in mapped_ver else ">=0.0.1"
+            requirements_lines.append(mapped_ver)
+            
         lock_data = {
             "flowweaver_version": "0.1.0",
             "python_version": config.target_python_version,
-            "dependencies": {
-                "flowweaver-sdk": ">=0.1.0",
-                "polars": ">=0.20.0",
-                "pyarrow": ">=14.0.0"
-            },
+            "dependencies": lock_deps,
             "nodes": [op.node_type for op in ir.operations]
         }
+        
         with open(os.path.join(config.output_dir, "pipeline.lock"), "w", encoding="utf-8") as f:
             json.dump(lock_data, f, indent=2)
+
+        # Write requirements.txt
+        requirements_path = os.path.join(config.output_dir, "requirements.txt")
+        with open(requirements_path, "w", encoding="utf-8") as f:
+            if requirements_lines:
+                f.write("\n".join(requirements_lines) + "\n")
+            else:
+                f.write("# No external third-party dependencies required.\n")
 
         # 6c. Write metadata.json (Compilation Report & Statistics)
         metadata_data = {
@@ -223,6 +282,7 @@ class PipelineCompiler:
             "operations_count": len(ir.operations),
             "imports_count": len(ir.imports),
             "variables_count": len(ir.variables),
+            "requirements": requirements_lines,
             "operations": [{"id": op.id, "type": op.node_type, "variable": op.target_variable} for op in ir.operations]
         }
         with open(os.path.join(config.output_dir, "metadata.json"), "w", encoding="utf-8") as f:

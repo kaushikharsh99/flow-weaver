@@ -79,16 +79,28 @@ class PythonGenerator:
         builder.line(get_header(ir.name))
         builder.blank()
 
-        # 2. Standard library imports
+        # 2. Standard library base imports
         builder.line("import argparse")
         builder.line("import logging")
         builder.line("import time")
         builder.blank()
 
-        # 3. FlowWeaver imports
-        if ir.imports:
-            for imp in ir.imports:
-                builder.line(imp.to_statement())
+        # 3. Resolve and Inline Operations using PipelineLinker
+        from app.compiler.linker import PipelineLinker
+        linker = PipelineLinker()
+        
+        required_ops = []
+        for op in ir.operations:
+            if isinstance(op.expression, IRCall):
+                func_name = op.expression.function
+                if func_name in linker.name_to_file:
+                    required_ops.append(func_name)
+
+        inlined_code, requirements = linker.link(required_ops)
+        ir.metadata["requirements"] = requirements
+        
+        if inlined_code:
+            builder.line(inlined_code)
             builder.blank()
 
         # 4. Logging setup

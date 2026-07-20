@@ -1,0 +1,4 @@
+# FlowWeaver Pipeline Configuration
+pipeline_name: "6na68unh"
+input_path: "data/users.csv"
+output_path: "out/results.csv"

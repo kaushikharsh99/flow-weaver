@@ -94,8 +94,9 @@ def test_node_migration_end_to_end_compilation_and_execution():
         res = PipelineCompiler.compile(pipeline, config)
 
         assert res.success
-        assert "from flowweaver.std.io import import_dataset, export_jsonl" in res.script
-        assert "from flowweaver.std.text import lowercase" in res.script
+        assert "def import_dataset" in res.script
+        assert "def export_jsonl" in res.script
+        assert "def lowercase" in res.script
         # Verify NO legacy core_logic imports exist
         assert "app.engine.nodes.core_logic" not in res.script
 
