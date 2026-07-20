@@ -1,0 +1,105 @@
+{
+  "$schema": "https://flowweaver.dev/schemas/pipeline/v1.json",
+  "version": "1.0.0",
+  "id": "cuk8wvd3",
+  "name": "My Pipeline",
+  "description": "",
+  "createdAt": "2026-07-20T06:01:51.206Z",
+  "updatedAt": "2026-07-20T06:01:51.206Z",
+  "nodes": [
+    {
+      "id": "74p1sagm",
+      "type": "pipelineNode",
+      "position": {
+        "x": 273.67288212110526,
+        "y": 181.7327450184078
+      },
+      "data": {
+        "typeId": "load_json",
+        "title": "Load JSON",
+        "params": {
+          "path": "data/records.json",
+          "root": "data"
+        }
+      }
+    },
+    {
+      "id": "nqymnu2t",
+      "type": "pipelineNode",
+      "position": {
+        "x": 273.7960372359378,
+        "y": 288.709529184155
+      },
+      "data": {
+        "typeId": "search_text",
+        "title": "Search Text",
+        "params": {
+          "column": "email",
+          "pattern": "@acme\\.com$",
+          "regex": true
+        }
+      }
+    },
+    {
+      "id": "m2sv563u",
+      "type": "pipelineNode",
+      "position": {
+        "x": 276.6745460415786,
+        "y": 403.4626577653795
+      },
+      "data": {
+        "typeId": "dedup_exact",
+        "title": "Dedup Exact",
+        "params": {
+          "keys": "email"
+        }
+      }
+    },
+    {
+      "id": "s77eu9xh",
+      "type": "pipelineNode",
+      "position": {
+        "x": 273.1691856815916,
+        "y": 491.79171339572986
+      },
+      "data": {
+        "typeId": "write_json",
+        "title": "Write JSON",
+        "params": {
+          "path": "out/results.json",
+          "pretty": true
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "reactflow__edge-74p1sagmout-nqymnu2tin",
+      "source": "74p1sagm",
+      "target": "nqymnu2t",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "reactflow__edge-nqymnu2tout-m2sv563uin",
+      "source": "nqymnu2t",
+      "target": "m2sv563u",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "reactflow__edge-m2sv563uout-s77eu9xhin",
+      "source": "m2sv563u",
+      "target": "s77eu9xh",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    }
+  ],
+  "variables": {},
+  "settings": {},
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

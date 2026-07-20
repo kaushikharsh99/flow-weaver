@@ -1,0 +1,31 @@
+{
+  "pipeline_name": "cuk8wvd3",
+  "compiled_at": "2026-07-20T06:01:51Z",
+  "execution_time_ms": 0.65,
+  "generated_loc": 39,
+  "operations_count": 4,
+  "imports_count": 3,
+  "variables_count": 4,
+  "operations": [
+    {
+      "id": "74p1sagm",
+      "type": "load_json",
+      "variable": "raw_dataset"
+    },
+    {
+      "id": "nqymnu2t",
+      "type": "search_text",
+      "variable": "dataset"
+    },
+    {
+      "id": "m2sv563u",
+      "type": "dedup_exact",
+      "variable": "deduplicated_dataset"
+    },
+    {
+      "id": "s77eu9xh",
+      "type": "write_json",
+      "variable": "dataset_1"
+    }
+  ]
+}

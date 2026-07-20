@@ -1,0 +1,15 @@
+{
+  "flowweaver_version": "0.1.0",
+  "python_version": "3.11",
+  "dependencies": {
+    "flowweaver-sdk": ">=0.1.0",
+    "polars": ">=0.20.0",
+    "pyarrow": ">=14.0.0"
+  },
+  "nodes": [
+    "load_json",
+    "search_text",
+    "dedup_exact",
+    "write_json"
+  ]
+}

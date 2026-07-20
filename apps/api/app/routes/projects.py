@@ -7,12 +7,13 @@ from app import models, schemas
 
 router = APIRouter()
 
-@router.get("/projects", response_model=Dict[str, Any])
+@router.get("/projects")
 def list_projects(db: Session = Depends(get_db)):
     projects = db.query(models.Project).all()
-    # Align with API contract wrapping: { "data": [...], "meta": { "total": n } }
+    # Serialize SQLAlchemy models through Pydantic schema
+    serialized = [schemas.ProjectResponse.model_validate(p).model_dump(by_alias=True) for p in projects]
     return {
-        "data": projects,
+        "data": serialized,
         "meta": {"total": len(projects)}
     }
 

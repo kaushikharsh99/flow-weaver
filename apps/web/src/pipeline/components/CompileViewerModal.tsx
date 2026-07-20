@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { X, Copy, Download, Code2, Check, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -10,9 +10,43 @@ interface CompileViewerModalProps {
   pipelineName: string;
 }
 
+/** Minimal Python syntax highlighting using spans + CSS classes. */
+function highlightPython(code: string): string {
+  return code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // Triple-quoted docstrings
+    .replace(/("""[\s\S]*?""")/g, '<span class="py-string">$1</span>')
+    // Comments (# ...)
+    .replace(/(#.*)/gm, '<span class="py-comment">$1</span>')
+    // Single/double quoted strings (not inside comments)
+    .replace(/(?<!py-comment">.*?)('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g, '<span class="py-string">$1</span>')
+    // Keywords
+    .replace(
+      /\b(def|class|import|from|return|if|elif|else|for|while|with|as|try|except|finally|raise|pass|break|continue|and|or|not|in|is|None|True|False|__name__|__main__)\b/g,
+      '<span class="py-keyword">$1</span>'
+    )
+    // Built-in functions
+    .replace(
+      /\b(print|len|range|int|str|float|list|dict|set|tuple|type|isinstance|open|sorted|map|filter|zip|enumerate)\b(?=\s*\()/g,
+      '<span class="py-builtin">$1</span>'
+    )
+    // Function calls (word followed by open paren)
+    .replace(
+      /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g,
+      '<span class="py-func">$1</span>'
+    )
+    // Decorators
+    .replace(/^(\s*@\w+)/gm, '<span class="py-decorator">$1</span>');
+}
+
 
 export function CompileViewerModal({ isOpen, onClose, script, pipelineName }: CompileViewerModalProps) {
   const [copied, setCopied] = useState(false);
+
+  const highlighted = useMemo(() => highlightPython(script || ""), [script]);
+  const lineCount = (script || "").split("\n").length;
 
   if (!isOpen) return null;
 
@@ -86,10 +120,20 @@ export function CompileViewerModal({ isOpen, onClose, script, pipelineName }: Co
           </div>
 
           {/* Code Viewer Body */}
-          <div className="flex-1 overflow-auto p-6 bg-zinc-950 font-mono text-sm leading-relaxed text-zinc-200 selection:bg-purple-500/30">
-            <pre className="whitespace-pre-wrap font-mono text-xs text-purple-200/90">
-              <code>{script}</code>
-            </pre>
+          <div className="flex-1 overflow-auto bg-[#0d1117]">
+            <div className="flex min-w-0">
+              {/* Line Numbers */}
+              <div className="sticky left-0 flex-shrink-0 select-none py-5 pl-4 pr-3 text-right font-mono text-xs leading-[1.65rem] text-white/20 border-r border-white/5 bg-[#0d1117]">
+                {Array.from({ length: lineCount }, (_, i) => (
+                  <div key={i}>{i + 1}</div>
+                ))}
+              </div>
+
+              {/* Code Content */}
+              <pre className="flex-1 py-5 px-5 font-mono text-[13px] leading-[1.65rem] text-zinc-300 whitespace-pre overflow-x-auto">
+                <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+              </pre>
+            </div>
           </div>
 
           {/* Footer Info */}
@@ -97,10 +141,20 @@ export function CompileViewerModal({ isOpen, onClose, script, pipelineName }: Co
             <span className="flex items-center gap-1.5">
               <Sparkles size={13} className="text-purple-400" /> Standalone script — executable anywhere with Python 3.10+
             </span>
-            <span>FlowWeaver Compiler 2.0</span>
+            <span>{lineCount} lines • FlowWeaver Compiler</span>
           </div>
         </motion.div>
       </div>
+
+      {/* Syntax Highlighting Styles */}
+      <style>{`
+        .py-comment { color: #6a737d; font-style: italic; }
+        .py-string { color: #a5d6ff; }
+        .py-keyword { color: #ff7b72; font-weight: 500; }
+        .py-builtin { color: #d2a8ff; }
+        .py-func { color: #d2a8ff; }
+        .py-decorator { color: #ffa657; }
+      `}</style>
     </AnimatePresence>
   );
 }
