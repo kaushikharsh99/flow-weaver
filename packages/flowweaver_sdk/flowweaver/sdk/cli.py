@@ -1,4 +1,5 @@
-import os
+from typing import Optional
+
 import sys
 import argparse
 import json
@@ -758,10 +759,48 @@ def package_plugin(path: str):
     print(f"Output path: {os.path.abspath(tar_filename)}")
 
 
+def compile_pipeline(pipeline_path: str, output_path: Optional[str] = None):
+    """Compiles a visual pipeline.json file into a standalone, production-ready pipeline.py script."""
+    if not os.path.exists(pipeline_path):
+        print(f"Error: Pipeline file '{pipeline_path}' not found.")
+        sys.exit(1)
+
+    try:
+        with open(pipeline_path, "r", encoding="utf-8") as f:
+            pipeline_data = json.load(f)
+    except Exception as e:
+        print(f"Error reading pipeline file: {e}")
+        sys.exit(1)
+
+    try:
+        from app.compiler.compiler import PipelineCompiler, CompilerConfig
+    except ImportError:
+        print("Error: FlowWeaver compiler package could not be loaded.")
+        sys.exit(1)
+
+    out_dir = os.path.dirname(os.path.abspath(output_path)) if output_path else os.getcwd()
+    out_name = os.path.basename(output_path) if output_path else "pipeline.py"
+
+    config = CompilerConfig(output_dir=out_dir, script_name=out_name)
+    res = PipelineCompiler.compile(pipeline_data, config)
+
+    if res.success:
+        print(f"✔ Pipeline successfully compiled to: {res.script_path}")
+    else:
+        print("❌ Pipeline compilation failed:")
+        for err in res.errors:
+            print(f"  - {err}")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="FlowWeaver CLI developer assistant tool.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     
+    compile_parser = subparsers.add_parser("compile", help="Compiles a visual pipeline JSON into a runnable Python script.")
+    compile_parser.add_argument("pipeline", type=str, help="Path to input pipeline.json file.")
+    compile_parser.add_argument("--output", "-o", type=str, default=None, help="Output path for compiled pipeline.py script.")
+
     create_plugin_parser = subparsers.add_parser("create-plugin", help="Scaffold a new custom plugin template.")
     create_plugin_parser.add_argument("name", type=str, help="Name of the plugin directory to create.")
 
@@ -783,7 +822,9 @@ def main():
     
     args = parser.parse_args()
     
-    if args.command == "create-plugin":
+    if args.command == "compile":
+        compile_pipeline(args.pipeline, args.output)
+    elif args.command == "create-plugin":
         create_plugin(args.name)
     elif args.command == "create-node":
         create_node(args.name, args.category)
@@ -799,3 +840,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

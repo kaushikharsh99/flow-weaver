@@ -1,9 +1,7 @@
-import csv
-import json
-import os
 from typing import Dict, Any
-from flowweaver.sdk import Node, Input, Output, Param, node, ExecutionContext, TabularDataset
-from app.engine.nodes.core_logic import load_jsonl_file, load_parquet_file, load_hf_hub_dataset
+from flowweaver.sdk import Node, Output, Param, node, ExecutionContext
+from flowweaver.std import io
+
 
 @node(name="Load CSV", category="Loaders", icon="FileSpreadsheet", description="Read a CSV file from path")
 class LoadCSVNode(Node):
@@ -14,33 +12,16 @@ class LoadCSVNode(Node):
     delimiter = Param.select(label="Delimiter", default=",", options=[
         {"label": "Comma", "value": ","}, {"label": "Tab", "value": "\t"}, {"label": "Semicolon", "value": ";"}
     ])
-    header = Param.boolean(label="Has header row", default=True)
+
+    def compile(self, ctx: Any) -> Any:
+        path = ctx.current_params.get("path", "data/sample.csv")
+        delim = ctx.current_params.get("delimiter", ",")
+        return ctx.call("flowweaver.std.io.import_dataset", path=path, delimiter=delim)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        path = ctx.parameters.get("path", "")
-        # Resolve env variables
-        for k, v in ctx.variables.items():
-            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
-            
-        ctx.log(f"Loading CSV from: {path}")
-        delimiter = ctx.parameters.get("delimiter", ",")
-        has_header = ctx.parameters.get("header", True)
-        
-        rows = []
-        with open(path, mode='r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter=delimiter)
-            header = []
-            if has_header:
-                try:
-                    header = next(reader)
-                except StopIteration:
-                    return {"out": TabularDataset([], columns=[])}
-            for row in reader:
-                if has_header:
-                    rows.append(dict(zip(header, row)))
-                else:
-                    rows.append({f"col_{i}": v for i, v in enumerate(row)})
-        return {"out": TabularDataset(rows, columns=header if has_header else [])}
+        path = ctx.parameters.get("path", "data/sample.csv")
+        delim = ctx.parameters.get("delimiter", ",")
+        return {"out": io.import_dataset(path, delimiter=delim)}
 
 
 @node(name="Load JSON", category="Loaders", icon="FileText", description="Parse a JSON array of records")
@@ -51,22 +32,15 @@ class LoadJSONNode(Node):
     path = Param.file(label="File path", default="data/sample.json", accept=".json")
     root_key = Param.text(label="Root key", default="", placeholder="data")
 
+    def compile(self, ctx: Any) -> Any:
+        path = ctx.current_params.get("path", "data/sample.json")
+        root = ctx.current_params.get("root_key", "")
+        return ctx.call("flowweaver.std.io.import_dataset", path=path, root_key=root)
+
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        path = ctx.parameters.get("path", "")
-        for k, v in ctx.variables.items():
-            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
-            
-        ctx.log(f"Loading JSON from: {path}")
-        with open(path, mode='r', encoding='utf-8') as f:
-            data = json.load(f)
-            
+        path = ctx.parameters.get("path", "data/sample.json")
         root = ctx.parameters.get("root_key", "")
-        if root and isinstance(data, dict):
-            data = data.get(root, data)
-            
-        if not isinstance(data, list):
-            data = [data]
-        return {"out": TabularDataset(data)}
+        return {"out": io.import_dataset(path, root_key=root)}
 
 
 @node(name="Load JSONL", category="Loaders", icon="Layers", description="Parse a JSON Lines file (one record per line)")
@@ -75,37 +49,25 @@ class LoadJSONLNode(Node):
     out = Output.tabular(label="Records")
     path = Param.file(label="File path", default="data/sample.jsonl", accept=".jsonl")
 
+    def compile(self, ctx: Any) -> Any:
+        path = ctx.current_params.get("path", "data/sample.jsonl")
+        return ctx.call("flowweaver.std.io.import_dataset", path=path)
+
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        path = ctx.parameters.get("path", "")
-        for k, v in ctx.variables.items():
-            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
-        return {"out": load_jsonl_file(path)}
+        path = ctx.parameters.get("path", "data/sample.jsonl")
+        return {"out": io.import_dataset(path)}
 
 
-@node(name="Load Parquet", category="Loaders", icon="Database", description="Load Parquet dataset using Polars")
+@node(name="Load Parquet", category="Loaders", icon="Database", description="Load Parquet dataset")
 class LoadParquetNode(Node):
     id = "load_parquet"
     out = Output.tabular(label="Table")
     path = Param.file(label="File path", default="data/sample.parquet", accept=".parquet")
 
-    def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        path = ctx.parameters.get("path", "")
-        for k, v in ctx.variables.items():
-            path = path.replace(f"${{{k}}}", str(v)).replace(f"${k}", str(v))
-        return {"out": load_parquet_file(path)}
-
-
-@node(name="HuggingFace Dataset", category="Loaders", icon="Globe", description="Download a dataset from Hugging Face Hub")
-class LoadHFDatasetNode(Node):
-    id = "load_hf_dataset"
-    out = Output.tabular(label="Dataset")
-    
-    dataset_id = Param.text(label="Dataset Name", default="imdb", placeholder="e.g. wikitext, imdb")
-    split = Param.text(label="Split", default="train")
-    limit = Param.number(label="Row Limit", default=100, min=1)
+    def compile(self, ctx: Any) -> Any:
+        path = ctx.current_params.get("path", "data/sample.parquet")
+        return ctx.call("flowweaver.std.io.import_dataset", path=path)
 
     def execute(self, inputs: Dict[str, Any], ctx: ExecutionContext) -> Dict[str, Any]:
-        dataset_id = ctx.parameters.get("dataset_id", "imdb")
-        split = ctx.parameters.get("split", "train")
-        limit = int(ctx.parameters.get("limit", 100))
-        return {"out": load_hf_hub_dataset(dataset_id, split=split, limit=limit)}
+        path = ctx.parameters.get("path", "data/sample.parquet")
+        return {"out": io.import_dataset(path)}
