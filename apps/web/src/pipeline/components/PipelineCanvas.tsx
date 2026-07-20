@@ -99,6 +99,17 @@ function InnerCanvas() {
     setNodeMenu(null);
   }, [rfInstance]);
 
+  const fitViewTrigger = useStore(s => s.fitViewTrigger);
+
+  useEffect(() => {
+    if (fitViewTrigger > 0) {
+      const timer = setTimeout(() => {
+        rf.fitView({ padding: 0.2, duration: 400 });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [fitViewTrigger, rf]);
+
   // dismiss menus on click
   useEffect(() => {
     const handler = () => { setNodeMenu(null); setCanvasMenu(null); };
