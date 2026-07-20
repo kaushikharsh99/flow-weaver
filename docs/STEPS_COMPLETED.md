@@ -136,3 +136,10 @@ This document records the exact milestones, phases, and files implemented during
   - Implemented line numbers gutter, syntax coloring, and horizontal scrolling in frontend `CompileViewerModal.tsx`.
   - Resolved `Project` models serialization `PydanticSerializationError` 500 in `/api/projects` endpoint.
 
+### Template Loading & Gallery Implementation
+- **Dynamic Seeding**: Refactored `apps/api/app/seed.py` to dynamically load all `.json` files from the templates directory (`apps/api/app/templates/`) instead of maintaining a hardcoded list in Python, making it future-proof.
+- **Node Position Integration**: Integrated default coordinate positions (`position` key) in all standard JSON template files so they render correctly on the canvas.
+- **Zustand Store Actions**: Implemented the `applyTemplate` action in `store.ts` that safely imports the template, sets fallback positions if necessary, resets history so undo/redo starts from the loaded state, and resets `pipelineId` to `null` to ensure it is immediately editable as a new pipeline.
+- **React Flow Viewport Center**: Added a `fitViewTrigger` mechanism to the store, and connected it to a `useEffect` hook in `PipelineCanvas.tsx` to automatically center/fit the view (`rf.fitView`) upon loading a template.
+- **Interactive Template Gallery**: Added a brand-new, premium, glassmorphic `TemplateGalleryModal` component to browse and select built-in templates. Integrated a "Templates" trigger button directly in the canvas toolbar.
+
